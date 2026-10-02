@@ -2,7 +2,11 @@
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="FantaApp" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#172522" />
     <meta name="description" content="La tua base per gestire rose e formazioni Fantacalcio." />
     <title>FantaApp — Il tuo fantacalcio, in ordine</title>
@@ -24,7 +28,9 @@
         </nav>
         <div class="sidebar-bottom">
           <div class="demo-pill"><span></span> Modalità demo</div>
-          <p>I dati sono salvati solo in questo browser.</p>
+          <p id="storage-status" role="status">Apertura archivio locale…</p>
+          <button id="install-help" class="button button-outline" type="button">Installa su iPhone</button>
+          <p id="offline-status" role="status">Preparazione accesso offline…</p>
         </div>
       </aside>
 
@@ -32,8 +38,9 @@
         <header class="topbar">
           <button id="menu-toggle" class="icon-button menu-toggle" type="button" aria-label="Apri menu" aria-expanded="false">☰</button>
           <div class="topbar-context">IL TUO SPAZIO FANTACALCIO <span> / </span> <strong id="breadcrumb">Panoramica</strong></div>
-          <div class="topbar-right"><span class="save-indicator"><span></span> Salvato nel browser</span><span class="avatar">FA</span></div>
+          <div class="topbar-right"><span class="save-indicator"><span></span> Apertura archivio…</span><span class="avatar">FA</span></div>
         </header>
+        <div id="storage-error" class="info-banner" role="alert" hidden><p>Le ultime modifiche non sono state salvate. Mantieni aperta l’app.</p><button class="button button-outline" type="button" data-action="retry-save">Riprova</button></div>
         <main id="app" tabindex="-1"></main>
       </div>
     </div>
@@ -67,6 +74,14 @@
       </form>
     </dialog>
 
+    <dialog id="install-dialog" class="app-dialog">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
+      <h2>FantaApp sul tuo iPhone</h2>
+      <ol><li>Apri questo sito in Safari.</li><li>Apri il menu Condividi e scegli “Aggiungi alla schermata Home”.</li><li>Se disponibile, lascia attivo “Apri come app web” e tocca “Aggiungi”.</li></ol>
+      <p>Apri FantaApp dall’icona almeno una volta con Internet. Attendi “Disponibile offline” prima di usarla senza connessione.</p>
+      <p>I dati salvati sono locali. Safari e l’app installata possono avere archivi separati: usa l’icona Home per gestire le squadre.</p>
+    </dialog>
     <script type="module" src="./src/app.mjs"></script>
+    <script type="module" src="./src/pwa.mjs"></script>
   </body>
 </html>

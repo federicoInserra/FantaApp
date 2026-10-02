@@ -1,6 +1,6 @@
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 
-const STORAGE_KEY = 'fantaapp.demo.v1';
+import { readState, writeState } from './storage.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 const demoPlayers = [
   ['P', 'Alessandro Conti', 'Milano', 8.2, 7.5], ['P', 'Luca Moretti', 'Torino', 6.8, 6.9],
@@ -12,20 +12,32 @@ const demoPlayers = [
 function uid() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`; }
 function sampleTeam() { return { id: uid(), name: 'Atletico Fantasia', formation: '3-4-3', players: demoPlayers.map(([role, name, club, form, vote]) => ({ id: uid(), role, name, club, form, vote, available: true })) }; }
 function initialState() { const team = sampleTeam(); return { teams: [team], activeTeamId: team.id }; }
-function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved && Array.isArray(saved.teams) && saved.teams.length && saved.teams.every(team => typeof team.id === 'string' && Array.isArray(team.players))) return saved;
-  } catch { /* Start with demo data when storage is unavailable or malformed. */ }
-  return initialState();
+let state;
+try { state = await readState(initialState); }
+catch (error) {
+  document.querySelector('#app').textContent = 'Impossibile aprire il archivio locale. Riapri l’app senza cancellare i dati. ' + error.message;
+  document.querySelector('#storage-status').textContent = 'Archivio non disponibile: nessun dato è stato sostituito.';
+  document.querySelector('.save-indicator').textContent = 'Archivio non disponibile';
+  throw error;
 }
-
-let state = loadState();
 let page = ['panoramica', 'rosa', 'formazione', 'notizie'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'panoramica';
 let roleFilter = 'Tutti';
 const app = document.querySelector('#app');
 
-function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* The UI remains usable for this session. */ } }
+function save() {
+  const status = document.querySelector('#storage-status');
+  const indicator = document.querySelector('.save-indicator');
+  try {
+    writeState(state);
+    status.textContent = 'Squadre salvate su questo dispositivo.';
+    indicator.textContent = 'Salvato sul dispositivo';
+    document.querySelector('#storage-error').hidden = true;
+  } catch {
+    status.textContent = 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
+    indicator.textContent = 'Non salvato';
+    document.querySelector('#storage-error').hidden = false;
+  }
+}
 function activeTeam() { return state.teams.find(team => team.id === state.activeTeamId) ?? state.teams[0]; }
 function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
 function formatScore(value) { return Number(value).toFixed(1).replace('.', ','); }
@@ -46,7 +58,7 @@ function renderOverview(team) {
     </div>
     <div class="section-title-row"><div><p class="eyebrow">A COLPO D’OCCHIO</p><h2>I numeri della rosa</h2></div>${button('Gestisci la rosa <span>→</span>', 'go-roster', 'text-button')}</div>
     <div class="stat-grid"><div class="stat-card"><span class="stat-icon stat-green">◉</span><span class="stat-label">GIOCATORI IN ROSA</span><strong>${team.players.length}</strong><small>Totale giocatori</small></div><div class="stat-card"><span class="stat-icon stat-orange">✓</span><span class="stat-label">DISPONIBILI</span><strong>${available}</strong><small>Pronti per la formazione</small></div><div class="stat-card"><span class="stat-icon stat-purple">▦</span><span class="stat-label">MODULO SCELTO</span><strong>${escapeHTML(team.formation)}</strong><small>Puoi cambiarlo quando vuoi</small></div></div>
-    <div class="info-banner"><span>ⓘ</span><p><strong>Un ambiente per iniziare.</strong> Nomi, statistiche e notizie presenti nell’app sono esempi. I tuoi dati restano salvati in questo browser.</p></div>`;
+    <div class="info-banner"><span>ⓘ</span><p><strong>Un ambiente per iniziare.</strong> Nomi, statistiche e notizie presenti nell’app sono esempi. Le tue squadre sono salvate su questo dispositivo.</p></div>`;
 }
 
 function renderRoster(team) {
@@ -86,6 +98,7 @@ document.addEventListener('click', event => {
   const filter = event.target.closest('[data-filter]'); if (filter) { roleFilter = filter.dataset.filter; render(); return; }
   const actionElement = event.target.closest('[data-action]'); if (!actionElement) return;
   const { action, id } = actionElement.dataset;
+  if (action === 'retry-save') save();
   if (action === 'new-team') { document.querySelector('#team-dialog').showModal(); document.querySelector('#team-name').focus(); }
   if (action === 'remove-team') { const team = activeTeam(); if (state.teams.length > 1 && confirm(`Eliminare ${team.name} e tutti i suoi giocatori?`)) { state.teams = state.teams.filter(item => item.id !== team.id); state.activeTeamId = state.teams[0].id; save(); render(); } }
   if (action === 'new-player') { document.querySelector('#player-dialog').showModal(); document.querySelector('#player-name').focus(); }
