@@ -11,3 +11,5 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 .app-dialog li{margin-bottom:12px;line-height:1.5}
 #offline-status,#storage-status{font-size:12px;line-height:1.5}
 @media(max-width:760px){input,select{font-size:16px}.sidebar{padding-bottom:calc(22px + env(safe-area-inset-bottom));height:100dvh}.sidebar .button{white-space:normal}}
+
+.catalog-dialog{width:min(720px,94vw);max-height:90dvh;overflow:auto}.catalog-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #e3e8e1}.catalog-row>div{flex:1;min-width:0}.catalog-row strong,.catalog-row small{display:block}.catalog-row small{font-size:12px;color:#617268;margin-top:4px}.catalog-row .button{flex:none;padding:8px 10px;min-height:44px}.catalog-checkbox{display:flex!important;align-items:center;gap:8px;margin-top:14px}.catalog-checkbox input{width:auto}.catalog-row button:disabled{opacity:.55;cursor:default}#catalog-results{max-height:48dvh;overflow:auto}#team-list{margin-top:8px}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #698333;outline-offset:2px}

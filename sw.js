@@ -1,9 +1,9 @@
 // Bump the version whenever an app-shell asset changes.
 const CACHE_PREFIX = `fantaapp-${self.registration.scope}-`;
-const CACHE = `${CACHE_PREFIX}v1`;
+const CACHE = `${CACHE_PREFIX}v2`;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
-  './src/storage.mjs', './src/app.mjs', './src/lineup.mjs', './src/pwa.mjs',
+  './data/fantamaster.json', './data/leghe.json', './src/catalog.mjs', './src/storage.mjs', './src/app.mjs', './src/lineup.mjs', './src/pwa.mjs',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png',
 ];
 self.addEventListener('install', event => {

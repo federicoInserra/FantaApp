@@ -10,6 +10,7 @@ export const FORMATIONS = {
 export const ROLES = { P: 'Portieri', D: 'Difensori', C: 'Centrocampisti', A: 'Attaccanti' };
 
 export function playerScore(player) {
+  if (player.form == null || player.vote == null) return null;
   return Number(player.form) * 0.55 + Number(player.vote) * 0.45;
 }
 

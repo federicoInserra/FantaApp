@@ -1,3 +1,4 @@
+import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 
 import { readState, writeState } from './storage.mjs';
@@ -40,11 +41,11 @@ function save() {
 }
 function activeTeam() { return state.teams.find(team => team.id === state.activeTeamId) ?? state.teams[0]; }
 function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
-function formatScore(value) { return Number(value).toFixed(1).replace('.', ','); }
+function formatScore(value) { return value == null ? '—' : Number(value).toFixed(1).replace('.', ','); }
 function button(label, action, className = 'button button-primary') { return `<button class="${className}" type="button" data-action="${action}">${label}</button>`; }
 function roleBadge(role) { return `<span class="role-badge role-${role}">${role}</span>`; }
 function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p class="heading-description">${description}</p></div>${action}</div>`; }
-function teamPicker() { return `<div class="team-picker"><label for="team-select">SQUADRA ATTIVA</label><div class="team-select-row"><select id="team-select" aria-label="Seleziona squadra">${state.teams.map(team => `<option value="${escapeHTML(team.id)}" ${team.id === activeTeam().id ? 'selected' : ''}>${escapeHTML(team.name)}</option>`).join('')}</select>${button('+ Nuova squadra', 'new-team', 'button button-outline')}${state.teams.length > 1 ? button('Elimina squadra', 'remove-team', 'button button-quiet') : ''}</div></div>`; }
+function teamPicker() { return `<div class="team-picker"><label for="team-select">SQUADRA ATTIVA · ${activeTeam().listSource ? LISTS[activeTeam().listSource] : 'Listone da scegliere'}</label><div class="team-select-row"><select id="team-select" aria-label="Seleziona squadra">${state.teams.map(team => `<option value="${escapeHTML(team.id)}" ${team.id === activeTeam().id ? 'selected' : ''}>${escapeHTML(team.name)}</option>`).join('')}</select>${button('+ Nuova squadra', 'new-team', 'button button-outline')}${state.teams.length > 1 ? button('Elimina squadra', 'remove-team', 'button button-quiet') : ''}</div></div>`; }
 
 function renderOverview(team) {
   const lineup = suggestLineup(team.players, team.formation);
@@ -58,7 +59,7 @@ function renderOverview(team) {
     </div>
     <div class="section-title-row"><div><p class="eyebrow">A COLPO D’OCCHIO</p><h2>I numeri della rosa</h2></div>${button('Gestisci la rosa <span>→</span>', 'go-roster', 'text-button')}</div>
     <div class="stat-grid"><div class="stat-card"><span class="stat-icon stat-green">◉</span><span class="stat-label">GIOCATORI IN ROSA</span><strong>${team.players.length}</strong><small>Totale giocatori</small></div><div class="stat-card"><span class="stat-icon stat-orange">✓</span><span class="stat-label">DISPONIBILI</span><strong>${available}</strong><small>Pronti per la formazione</small></div><div class="stat-card"><span class="stat-icon stat-purple">▦</span><span class="stat-label">MODULO SCELTO</span><strong>${escapeHTML(team.formation)}</strong><small>Puoi cambiarlo quando vuoi</small></div></div>
-    <div class="info-banner"><span>ⓘ</span><p><strong>Un ambiente per iniziare.</strong> Nomi, statistiche e notizie presenti nell’app sono esempi. Le tue squadre sono salvate su questo dispositivo.</p></div>`;
+    <div class="info-banner"><span>ⓘ</span><p><strong>Un ambiente per iniziare.</strong> I listoni contengono i giocatori dei file forniti. La squadra iniziale e le notizie sono esempi. Le statistiche demo già presenti non sono aggiornate. Le tue squadre sono salvate su questo dispositivo.</p></div>`;
 }
 
 function renderRoster(team) {
@@ -66,14 +67,14 @@ function renderRoster(team) {
   return `${pageHeader('GESTIONE SQUADRA', 'La tua rosa', 'Tutti i tuoi giocatori, in un solo posto.', button('+ Aggiungi giocatore', 'new-player'))}${teamPicker()}
     <div class="content-card"><div class="content-card-top"><div><p class="eyebrow">ELENCO GIOCATORI</p><h2>${team.players.length} giocatori in rosa</h2></div><div class="filter-tabs" role="group" aria-label="Filtra per ruolo">${['Tutti', ...roleOrder].map(role => `<button type="button" data-filter="${role}" class="${roleFilter === role ? 'active' : ''}">${role}</button>`).join('')}</div></div>
     ${players.length ? `<div class="table-wrap"><table><thead><tr><th>GIOCATORE</th><th>RUOLO</th><th>FORMA DEMO</th><th>MEDIA DEMO</th><th>DISPONIBILITÀ</th><th><span class="sr-only">Azioni</span></th></tr></thead><tbody>${players.map(player => `<tr><td><div class="player-cell"><span class="player-avatar">${escapeHTML(player.name.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHTML(player.name)}</strong><small>${escapeHTML(player.club)}</small></span></div></td><td>${roleBadge(player.role)}</td><td><span class="score">${formatScore(player.form)}</span></td><td>${formatScore(player.vote)}</td><td><button class="availability ${player.available === false ? 'unavailable' : ''}" type="button" data-action="toggle-player" data-id="${escapeHTML(player.id)}" aria-label="Cambia disponibilità di ${escapeHTML(player.name)}"><span></span>${player.available === false ? 'Assente' : 'Disponibile'}</button></td><td><button class="row-action" type="button" data-action="remove-player" data-id="${escapeHTML(player.id)}" aria-label="Rimuovi ${escapeHTML(player.name)}">×</button></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty-state"><span>◉</span><h3>Ancora nessun giocatore qui</h3><p>Aggiungi un giocatore o scegli un altro filtro.</p>${button('+ Aggiungi giocatore', 'new-player')}</div>`}</div>
-    <p class="data-note">Le statistiche sono valori demo inseriti manualmente. Non sono aggiornamenti in tempo reale.</p>`;
+    <p class="data-note">“—” indica statistiche non ancora disponibili. I valori demo delle vecchie rose non sono dati reali. I ruoli dei nuovi giocatori provengono dal listone selezionato.</p>`;
 }
 
 function renderFormation(team) {
   const lineup = suggestLineup(team.players, team.formation);
   const count = Object.values(lineup.starters).flat().length;
-  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Un suggerimento semplice basato sui valori demo della tua rosa.')}${teamPicker()}
-    <div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">DATI DEMO</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio = 55% forma demo + 45% media voto demo. I giocatori assenti sono esclusi.</p></section>
+  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Una bozza per organizzare i ruoli. Le statistiche reali saranno integrate in seguito.')}${teamPicker()}
+    <div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
     <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
 }
 
@@ -101,16 +102,77 @@ document.addEventListener('click', event => {
   if (action === 'retry-save') save();
   if (action === 'new-team') { document.querySelector('#team-dialog').showModal(); document.querySelector('#team-name').focus(); }
   if (action === 'remove-team') { const team = activeTeam(); if (state.teams.length > 1 && confirm(`Eliminare ${team.name} e tutti i suoi giocatori?`)) { state.teams = state.teams.filter(item => item.id !== team.id); state.activeTeamId = state.teams[0].id; save(); render(); } }
-  if (action === 'new-player') { document.querySelector('#player-dialog').showModal(); document.querySelector('#player-name').focus(); }
+  if (action === 'new-player') openCatalog();
   if (action === 'go-formation') navigate('formazione');
   if (action === 'go-roster') navigate('rosa');
   if (action === 'toggle-player') { const player = activeTeam().players.find(item => item.id === id); if (player) { player.available = player.available === false; save(); render(); } }
   if (action === 'remove-player') { const team = activeTeam(); const player = team.players.find(item => item.id === id); if (player && confirm(`Rimuovere ${player.name} dalla rosa?`)) { team.players = team.players.filter(item => item.id !== id); save(); render(); } }
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
-document.querySelector('#team-form').addEventListener('submit', event => { event.preventDefault(); const form = event.currentTarget; const name = form.elements.name.value.trim(); if (!name) return; const team = { id: uid(), name, formation: '3-4-3', players: [] }; state.teams.push(team); state.activeTeamId = team.id; save(); form.reset(); document.querySelector('#team-dialog').close(); navigate('rosa'); });
-document.querySelector('#player-form').addEventListener('submit', event => { event.preventDefault(); const form = event.currentTarget; const name = form.elements.name.value.trim(); const club = form.elements.club.value.trim(); const formValue = Number(form.elements.form.value); const voteValue = Number(form.elements.vote.value); if (!name || !club || ![formValue, voteValue].every(value => Number.isFinite(value) && value >= 1 && value <= 10)) return; activeTeam().players.push({ id: uid(), name, role: form.elements.role.value, club, form: formValue, vote: voteValue, available: true }); save(); form.reset(); document.querySelector('#player-dialog').close(); render(); });
+document.querySelector('#team-form').addEventListener('submit', event => { event.preventDefault(); const form = event.currentTarget; const name = form.elements.name.value.trim(); if (!name) return; const listSource = form.elements.listSource.value; if (!Object.hasOwn(LISTS, listSource)) return; const team = { id: uid(), name, listSource, formation: '3-4-3', players: [] }; state.teams.push(team); state.activeTeamId = team.id; save(); form.reset(); document.querySelector('#team-dialog').close(); navigate('rosa'); });
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
 document.querySelector('#menu-toggle').addEventListener('click', () => { const sidebar = document.querySelector('.sidebar'); const open = sidebar.classList.toggle('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', String(open)); });
 window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
 save(); render();
+
+let catalogPlayers = [];
+let catalogTeamId;
+let catalogRequest = 0;
+async function openCatalog() {
+  const team = activeTeam();
+  if (!team.listSource) { document.querySelector('#list-dialog').showModal(); return; }
+  catalogTeamId = team.id;
+  const request = ++catalogRequest;
+  catalogPlayers = [];
+  document.querySelector('#catalog-source').textContent = LISTS[team.listSource];
+  document.querySelector('#catalog-search').value = '';
+  document.querySelector('#catalog-role').value = '';
+  document.querySelector('#catalog-out').checked = false;
+  document.querySelector('#catalog-results').replaceChildren();
+  document.querySelector('#catalog-count').textContent = 'Caricamento listone…';
+  document.querySelector('#player-dialog').showModal();
+  document.querySelector('#catalog-search').focus();
+  try {
+    const players = await loadCatalog(team.listSource);
+    if (request !== catalogRequest) return;
+    catalogPlayers = players;
+    renderCatalog();
+  } catch {
+    if (request !== catalogRequest) return;
+    document.querySelector('#catalog-count').textContent = 'Impossibile caricare il listone. Riprova con una connessione Internet.';
+    document.querySelector('#catalog-results').innerHTML = '<button type="button" class="button button-outline" id="catalog-retry">Riprova</button>';
+    document.querySelector('#catalog-retry').onclick = () => { document.querySelector('#player-dialog').close(); openCatalog(); };
+  }
+}
+function renderCatalog() {
+  const team = state.teams.find(item => item.id === catalogTeamId);
+  if (!team) return;
+  const matches = filterCatalog(catalogPlayers, document.querySelector('#catalog-search').value,
+    document.querySelector('#catalog-role').value, document.querySelector('#catalog-out').checked);
+  document.querySelector('#catalog-count').textContent = `${matches.length} giocatori · ${team.players.length} nella tua rosa`;
+  document.querySelector('#catalog-results').innerHTML = matches.length ? matches.map(player => {
+    const added = hasPlayer(team, player);
+    return `<div class="catalog-row">${roleBadge(player.role)}<div><strong>${escapeHTML(player.name)}</strong><small>${escapeHTML(player.club)} · Quot. ${player.quotation}${player.outOfList ? ' · Fuori lista' : ''}${player.trequartista ? ' · Trequartista' : ''}${player.mantraRoles ? ` · Mantra: ${escapeHTML(player.mantraRoles)}` : ''}</small></div><button type="button" class="button button-outline" data-catalog-id="${escapeHTML(player.id)}" ${added ? 'disabled' : ''} aria-label="${added ? 'In rosa' : 'Aggiungi'} ${escapeHTML(player.name)}">${added ? 'In rosa' : '+ Aggiungi'}</button></div>`;
+  }).join('') : '<p>Nessun giocatore trovato. Prova un altro nome, club o ruolo.</p>';
+}
+document.querySelector('#catalog-search').addEventListener('input', renderCatalog);
+document.querySelector('#catalog-role').addEventListener('change', renderCatalog);
+document.querySelector('#catalog-out').addEventListener('change', renderCatalog);
+document.querySelector('#catalog-results').addEventListener('click', event => {
+  const button = event.target.closest('[data-catalog-id]');
+  if (!button) return;
+  const team = state.teams.find(item => item.id === catalogTeamId);
+  const player = catalogPlayers.find(item => item.id === button.dataset.catalogId);
+  if (!team || !player || hasPlayer(team, player)) return;
+  team.players.push(rosterPlayer(player));
+  save(); render(); renderCatalog();
+});
+document.querySelector('#list-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const source = event.currentTarget.elements.listSource.value;
+  if (!Object.hasOwn(LISTS, source)) return;
+  activeTeam().listSource = source;
+  save(); render();
+  document.querySelector('#list-dialog').close();
+  openCatalog();
+});

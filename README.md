@@ -5,7 +5,7 @@ Una piccola app statica per organizzare più squadre Fantacalcio, gestire le ros
 ## Funzioni
 
 - Crea più squadre, passa da una all'altra ed elimina quelle che non servono.
-- Aggiungi o rimuovi giocatori, filtra la rosa per ruolo e segna le assenze.
+- Scegli FantaMaster o Leghe per ogni nuova squadra. Cerca e aggiungi giocatori dal relativo listone, filtra per ruolo e segna le assenze.
 - Scegli tra sei moduli. L'undici suggerito seleziona i giocatori disponibili con il punteggio più alto per ruolo: **55% forma + 45% media voto**.
 - Salva le modifiche nel `localStorage` del browser.
 
@@ -38,3 +38,17 @@ Le squadre sono salvate automaticamente come JSON nel localStorage del dispositi
 L’app funziona offline dopo il primo caricamento completo. Gli aggiornamenti vengono scaricati online e si attivano dopo aver chiuso tutte le finestre dell’app e averla riaperta. Quando cambiano i file pubblicati, incrementa la versione della cache in `sw.js`.
 
 Per preparare i soli file pubblici: `node scripts/build.mjs`.
+
+## Listoni giocatori
+
+I file `data/fantamaster.json` (583 giocatori) e `data/leghe.json` (599 giocatori, di cui 64 fuori lista) sono istantanee dei due Excel forniti. Sono pubblici e disponibili offline; le rose personali restano nel localStorage del dispositivo. Nessuna chiamata a servizi esterni è necessaria.
+
+Ogni catalogo conserva ID, nome, club, ruolo classico e quotazione. I ruoli Mantra e il flag trequartista sono mostrati come informazioni aggiuntive; i moduli usano P/D/C/A. I campi FantaSquadra e Costo del file Leghe non vengono pubblicati. FantaMaster viene letto dal foglio generale per evitare doppioni dei fogli per ruolo. Leghe usa gli ID originali; FantaMaster usa un ID derivato da nome e club (può cambiare se cambia il club).
+
+Per rigenerare le istantanee senza dipendenze Python:
+
+```sh
+python3 scripts/import-player-lists.py /percorso/fantamaster_list.xlsx /percorso/leghe_fantacalcio_list.xlsx
+```
+
+I giocatori nuovi non ricevono statistiche inventate: forma e media voto sono assenti. La formazione rimane una bozza indicativa fino all’integrazione delle statistiche reali. I listoni non si aggiornano automaticamente. Le rose già salvate vengono conservate; scelgono il listone al prossimo inserimento di un giocatore.

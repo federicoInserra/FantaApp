@@ -27,7 +27,7 @@
           <a href="#notizie" data-page="notizie"><span class="nav-icon">◱</span> Notizie demo</a>
         </nav>
         <div class="sidebar-bottom">
-          <div class="demo-pill"><span></span> Modalità demo</div>
+          <div class="demo-pill"><span></span> FantaApp</div>
           <p id="storage-status" role="status">Apertura archivio locale…</p>
           <button id="install-help" class="button button-outline" type="button">Installa su iPhone</button>
           <p id="offline-status" role="status">Preparazione accesso offline…</p>
@@ -52,25 +52,31 @@
         <h2>Dai un nome alla tua squadra</h2>
         <label for="team-name">Nome squadra</label>
         <input id="team-name" name="name" maxlength="32" required placeholder="Es. Atletico Lunatico" autocomplete="off" />
-        <p class="field-hint">Partirai con una rosa vuota, pronta da comporre.</p>
+        <label for="team-list">Quale listone vuoi usare?</label>
+        <select id="team-list" name="listSource" required><option value="" disabled selected>Scegli un listone</option><option value="fantamaster">FantaMaster</option><option value="leghe">Leghe</option></select>
+        <p class="field-hint">I ruoli dei giocatori seguiranno il listone scelto. Partirai con una rosa vuota.</p>
         <button class="button button-primary full-width" type="submit">Crea squadra <span>↗</span></button>
       </form>
     </dialog>
 
-    <dialog id="player-dialog" class="app-dialog">
-      <form id="player-form" method="dialog">
+    <dialog id="player-dialog" class="app-dialog catalog-dialog">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
+      <p class="eyebrow" id="catalog-source"></p><h2>Aggiungi dal listone</h2>
+      <label for="catalog-search">Cerca un giocatore o un club</label>
+      <input id="catalog-search" type="search" placeholder="Es. Lautaro o Inter" autocomplete="off" />
+      <label for="catalog-role">Ruolo</label>
+      <select id="catalog-role"><option value="">Tutti i ruoli</option><option value="P">Portieri</option><option value="D">Difensori</option><option value="C">Centrocampisti</option><option value="A">Attaccanti</option></select>
+      <label class="catalog-checkbox"><input id="catalog-out" type="checkbox" /> Mostra anche fuori lista</label>
+      <p id="catalog-count" role="status"></p><div id="catalog-results"></div>
+      <p class="field-hint">Ruoli classici P/D/C/A. Le liste sono quelle dei file forniti, senza aggiornamento automatico. Quotazione e ruolo non sono previsioni di rendimento.</p>
+    </dialog>
+    <dialog id="list-dialog" class="app-dialog">
+      <form id="list-form">
         <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
-        <p class="eyebrow">LA TUA ROSA</p>
-        <h2>Aggiungi un giocatore</h2>
-        <div class="field-grid">
-          <div class="field-wide"><label for="player-name">Nome</label><input id="player-name" name="name" maxlength="40" required placeholder="Es. Marco Rossi" autocomplete="off" /></div>
-          <div><label for="player-role">Ruolo</label><select id="player-role" name="role"><option value="P">Portiere</option><option value="D">Difensore</option><option value="C">Centrocampista</option><option value="A">Attaccante</option></select></div>
-          <div><label for="player-club">Club</label><input id="player-club" name="club" maxlength="24" required placeholder="Es. Milano" autocomplete="off" /></div>
-          <div><label for="player-form-score">Forma demo (1–10)</label><input id="player-form-score" name="form" type="number" min="1" max="10" step="0.1" value="7" required /></div>
-          <div><label for="player-vote">Media voto demo (1–10)</label><input id="player-vote" name="vote" type="number" min="1" max="10" step="0.1" value="7" required /></div>
-        </div>
-        <p class="field-hint">Le statistiche inserite sono indicative e non provengono da dati live.</p>
-        <button class="button button-primary full-width" type="submit">Aggiungi alla rosa <span>↗</span></button>
+        <h2>Quale listone vuoi usare?</h2>
+        <p>La tua rosa attuale verrà conservata. La scelta si applica ai giocatori che aggiungerai dal listone.</p>
+        <label for="existing-team-list">Listone</label><select id="existing-team-list" name="listSource" required><option value="" disabled selected>Scegli un listone</option><option value="fantamaster">FantaMaster</option><option value="leghe">Leghe</option></select>
+        <button class="button button-primary full-width" type="submit">Usa questo listone</button>
       </form>
     </dialog>
 
