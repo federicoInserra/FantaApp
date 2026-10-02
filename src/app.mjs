@@ -2,6 +2,7 @@ import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './ca
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 
 import { readState, writeState } from './storage.mjs';
+import { appendImportedTeam, decodeImportFragment } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 const demoPlayers = [
   ['P', 'Alessandro Conti', 'Milano', 8.2, 7.5], ['P', 'Luca Moretti', 'Torino', 6.8, 6.9],
@@ -33,10 +34,12 @@ function save() {
     status.textContent = 'Squadre salvate su questo dispositivo.';
     indicator.textContent = 'Salvato sul dispositivo';
     document.querySelector('#storage-error').hidden = true;
+    return true;
   } catch {
     status.textContent = 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
     indicator.textContent = 'Non salvato';
     document.querySelector('#storage-error').hidden = false;
+    return false;
   }
 }
 function activeTeam() { return state.teams.find(team => team.id === state.activeTeamId) ?? state.teams[0]; }
@@ -176,3 +179,97 @@ document.querySelector('#list-form').addEventListener('submit', event => {
   document.querySelector('#list-dialog').close();
   openCatalog();
 });
+
+let pendingImport;
+let importCatalog = [];
+let importPreviewRequest = 0;
+const importDialog = document.querySelector('#import-dialog');
+const importLink = document.querySelector('#import-link');
+const importError = document.querySelector('#import-error');
+const importPreview = document.querySelector('#import-preview-content');
+function openImportDialog(value = '') {
+  importPreviewRequest++;
+  pendingImport = null;
+  importCatalog = [];
+  importLink.value = value;
+  importPreview.replaceChildren();
+  importError.hidden = true;
+  document.querySelector('#import-add').disabled = true;
+  importDialog.showModal();
+  if (value) previewImport();
+  else importLink.focus();
+}
+function payloadFromText(value) {
+  const input = value.trim();
+  const hash = input.startsWith('#') ? input : new URL(input, location.href).hash;
+  return decodeImportFragment(hash);
+}
+async function previewImport() {
+  const request = ++importPreviewRequest;
+  pendingImport = null;
+  importCatalog = [];
+  importError.hidden = true;
+  document.querySelector('#import-add').disabled = true;
+  try {
+    const payload = payloadFromText(importLink.value);
+    if (!payload) throw new Error('Incolla un link o un codice di importazione valido.');
+    importPreview.textContent = 'Caricamento listone…';
+    const players = await loadCatalog(payload.source);
+    if (request !== importPreviewRequest) return;
+    const byId = new Map(players.map(player => [player.id, player]));
+    const resolved = payload.ids.map(id => byId.get(id));
+    if (resolved.some(player => !player)) throw new Error('Il listone non contiene tutti i giocatori del codice.');
+    pendingImport = payload;
+    importCatalog = players;
+    importPreview.innerHTML = `<section class="import-roster"><h3>${escapeHTML(payload.name)} · ${resolved.length} giocatori</h3><p>Listone ${escapeHTML(LISTS[payload.source])}. Forma e media voto restano vuote.</p><ul>${resolved.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
+    document.querySelector('#import-add').disabled = false;
+  } catch (error) {
+    if (request !== importPreviewRequest) return;
+    pendingImport = null;
+    importPreview.replaceChildren();
+    importError.textContent = error.message || 'Impossibile leggere questo codice.';
+    importError.hidden = false;
+  }
+}
+importLink.addEventListener('input', () => {
+  importPreviewRequest++;
+  pendingImport = null;
+  importCatalog = [];
+  importPreview.replaceChildren();
+  importError.hidden = true;
+  document.querySelector('#import-add').disabled = true;
+});
+document.querySelector('#import-team-open').addEventListener('click', () => openImportDialog());
+document.querySelector('#import-preview').addEventListener('click', previewImport);
+document.querySelector('#import-add').addEventListener('click', () => {
+  if (!pendingImport) return;
+  const previous = structuredClone(state);
+  try {
+    const result = appendImportedTeam(state, pendingImport, importCatalog, uid);
+    if (!result.added) {
+      importError.textContent = 'Questa squadra è già stata importata su questo dispositivo.';
+      importError.hidden = false;
+      return;
+    }
+    if (!save()) {
+      state = previous;
+      importError.textContent = 'Salvataggio non riuscito. La squadra non è stata importata. Mantieni aperta l’app e riprova.';
+      importError.hidden = false;
+      return;
+    }
+    const importedHash = location.hash;
+    importDialog.close();
+    if (importedHash.startsWith('#import=')) history.replaceState(null, '', `${location.pathname}${location.search}#rosa`);
+    navigate('rosa');
+  } catch (error) {
+    state = previous;
+    importError.textContent = error.message || 'Impossibile importare la squadra.';
+    importError.hidden = false;
+  }
+});
+function openFragmentImport() {
+  if (!location.hash.startsWith('#import=')) return;
+  openImportDialog(location.href);
+}
+openFragmentImport();
+window.addEventListener('hashchange', openFragmentImport);

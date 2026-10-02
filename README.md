@@ -52,3 +52,9 @@ python3 scripts/import-player-lists.py /percorso/fantamaster_list.xlsx /percorso
 ```
 
 I giocatori nuovi non ricevono statistiche inventate: forma e media voto sono assenti. La formazione rimane una bozza indicativa fino all’integrazione delle statistiche reali. I listoni non si aggiornano automaticamente. Le rose già salvate vengono conservate; scelgono il listone al prossimo inserimento di un giocatore.
+
+## Importare una squadra tramite link
+
+Dal menu dell’app installata scegli **Importa squadra**, incolla un link di importazione, visualizza l’anteprima e tocca **Aggiungi squadra**. Il link contiene nel frammento URL solo il nome, il listone e gli ID dei giocatori; i dati dei giocatori vengono risolti dal catalogo locale senza importare statistiche. Il roster personale non viene inserito nel repository. Chi riceve il link può leggerne il contenuto.
+
+La squadra viene salvata solo nell’archivio del dispositivo dove confermi l’importazione. Per iPhone, incolla il link direttamente nell’app avviata dalla schermata Home: un’importazione in Safari può usare un archivio separato. Una seconda importazione dello stesso nome, listone e gruppo di giocatori non crea duplicati né sostituisce modifiche successive. Non è una sincronizzazione cloud.

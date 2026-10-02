@@ -26,6 +26,7 @@
           <a href="#formazione" data-page="formazione"><span class="nav-icon">▦</span> Formazione</a>
           <a href="#notizie" data-page="notizie"><span class="nav-icon">◱</span> Notizie demo</a>
         </nav>
+        <button id="import-team-open" class="button button-outline full-width" type="button">Importa squadra</button>
         <div class="sidebar-bottom">
           <div class="demo-pill"><span></span> FantaApp</div>
           <p id="storage-status" role="status">Apertura archivio locale…</p>
@@ -57,6 +58,19 @@
         <p class="field-hint">I ruoli dei giocatori seguiranno il listone scelto. Partirai con una rosa vuota.</p>
         <button class="button button-primary full-width" type="submit">Crea squadra <span>↗</span></button>
       </form>
+    </dialog>
+
+    <dialog id="import-dialog" class="app-dialog import-dialog">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
+      <p class="eyebrow">IMPORTA UNA SQUADRA</p>
+      <h2>Apri il link della squadra</h2>
+      <p class="field-hint">Puoi aprire il link direttamente oppure incollarlo qui. La squadra verrà salvata in questo dispositivo.</p>
+      <label for="import-link">Link o codice</label>
+      <textarea id="import-link" rows="3" autocomplete="off" placeholder="Incolla il link ricevuto"></textarea>
+      <button id="import-preview" class="button button-outline full-width" type="button">Mostra anteprima</button>
+      <div id="import-preview-content" aria-live="polite"></div>
+      <p id="import-error" class="import-error" role="alert" hidden></p>
+      <button id="import-add" class="button button-primary full-width" type="button" disabled>Aggiungi squadra</button>
     </dialog>
 
     <dialog id="player-dialog" class="app-dialog catalog-dialog">
