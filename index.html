@@ -26,7 +26,6 @@
           <a href="#formazione" data-page="formazione"><span class="nav-icon">03</span> Formazione</a>
           <a href="#notizie" data-page="notizie"><span class="nav-icon">04</span> Notizie demo</a>
         </nav>
-        <button id="import-team-open" class="button button-outline full-width" type="button">Importa squadra</button>
         <button id="ai-settings-open" class="button button-outline full-width" type="button">Impostazioni AI</button>
         <div class="sidebar-bottom">
           <div class="demo-pill"><span></span> FantaApp</div>
@@ -59,7 +58,7 @@
         <p class="field-hint">Modello: DeepSeek V4.1 Flash. La ricerca web deve essere abilitata sul tuo account Fireworks. L’analisi richiede Internet e utilizza il tuo credito.</p>
       </form>
     </dialog>
-    <dialog id="team-dialog" class="app-dialog">
+    <dialog id="team-dialog" class="app-dialog import-dialog">
       <form id="team-form" method="dialog">
         <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
         <p class="eyebrow">NUOVA SQUADRA</p>
@@ -68,27 +67,26 @@
         <input id="team-name" name="name" maxlength="32" required placeholder="Es. Atletico Lunatico" autocomplete="off" />
         <label for="team-list">Quale listone vuoi usare?</label>
         <select id="team-list" name="listSource" required><option value="" disabled selected>Scegli un listone</option><option value="fantamaster">FantaMaster</option><option value="leghe">Leghe</option></select>
-        <p class="field-hint">I ruoli dei giocatori seguiranno il listone scelto. Partirai con una rosa vuota.</p>
-        <button class="button button-primary full-width" type="submit">Crea squadra <span>↗</span></button>
-      </form>
-    </dialog>
-
-    <dialog id="import-dialog" class="app-dialog import-dialog">
-      <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
-      <p class="eyebrow">IMPORTA UNA SQUADRA</p>
-      <h2>La tua rosa, da un file</h2>
-      <p class="field-hint">Scegli un file .txt e controlla l’anteprima prima di aggiungere la squadra. Il file viene letto solo su questo dispositivo, senza caricarlo online.</p>
-      <label for="import-file">File squadra (.txt)</label>
-      <input id="import-file" type="file" accept=".txt,text/plain" aria-describedby="import-format" />
-      <details class="import-format" id="import-format"><summary>Come preparare il file</summary><pre>Squadra: Atletico Federicao
+        <p class="field-hint">Il listone viene assegnato alla squadra e usato per aggiungere giocatori. Puoi iniziare con una rosa vuota.</p>
+        <div class="team-import-section">
+          <button id="team-import-toggle" class="button button-outline full-width" type="button" aria-expanded="false" aria-controls="team-import-fields">Importa giocatori da TXT (facoltativo)</button>
+          <div id="team-import-fields" hidden>
+            <label for="import-file">File squadra (.txt)</label>
+            <input id="import-file" type="file" accept=".txt,text/plain" aria-describedby="import-format" />
+            <p class="field-hint">Il nome inserito sopra ha sempre la precedenza sul nome nel file. Ruoli e club vengono mantenuti come scritti nel TXT, senza convertirli in quelli del listone.</p>
+            <details class="import-format" id="import-format"><summary>Come preparare il file</summary><pre>Squadra: Nome nel file
 
 P - Maignan (Milan)
 D - Akanji (Inter)
 C - Barella (Inter)
-A - Lucca (Napoli)</pre><p>Una riga per giocatore: ruolo P, D, C o A, trattino, nome e club tra parentesi. Testo semplice UTF-8, massimo 40 giocatori e 64 KB. Non serve scegliere un listone.</p></details>
-      <div id="import-preview-content" aria-live="polite"></div>
-      <p id="import-error" class="import-error" role="alert" hidden></p>
-      <button id="import-add" class="button button-primary full-width" type="button" disabled>Aggiungi squadra</button>
+A - Lucca (Napoli)</pre><p>Testo UTF-8, massimo 40 giocatori e 64 KB. Il file viene letto solo su questo dispositivo.</p></details>
+            <button id="import-clear" class="button button-quiet" type="button">Rimuovi importazione</button>
+            <div id="import-preview-content" aria-live="polite"></div>
+          </div>
+        </div>
+        <p id="import-error" class="import-error" role="alert" hidden></p>
+        <button id="team-create" class="button button-primary full-width" type="submit">Crea squadra <span>↗</span></button>
+      </form>
     </dialog>
 
     <dialog id="player-dialog" class="app-dialog catalog-dialog">

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendImportedTeam, parseTeamText, MAX_IMPORT_BYTES } from '../src/import-team.mjs';
+import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from '../src/import-team.mjs';
 import { isValidState } from '../src/storage.mjs';
 import { analyzeSquad } from '../src/analysis.mjs';
 const text = "Squadra: Squadra test\n\nP - Portiere (Milan)\nD - Carlos Augusto (Inter)\nC - Calo' (Frosinone)\nA - Castro S (Roma)";
@@ -26,27 +26,33 @@ test('invalid and duplicate lines fail with their original line number', () => {
  assert.throws(() => parseTeamText('x'.repeat(MAX_IMPORT_BYTES + 1)), /64 KB/);
  assert.throws(() => parseTeamText('Squadra: Test\n'+Array.from({length:41},(_,i)=>`P - Name ${i} (Club)`).join('\n')), /40 giocatori/);
 });
-test('import saves valid independent squads, blocks duplicate files, and allows reimport after deletion', () => {
- const state = { teams: [{ id: 'existing', name: 'Altro', formation: '3-4-3', players: [] }], activeTeamId: 'existing' };
- const payload = parseTeamText(text);
- const result = appendImportedTeam(state, payload, () => 'new');
- assert.equal(result.team.importedFrom, 'txt');
- assert.equal(result.team.listSource, undefined);
- assert.equal(state.activeTeamId, 'new');
- assert.ok(isValidState(state));
- result.team.players[0].available = false;
- assert.equal(payload.players[0].available, true);
- result.team.name = 'Modificata';
- assert.equal(appendImportedTeam(state, payload, () => 'duplicate').added, false);
- const reordered = parseTeamText('Squadra: SQUADRA TEST\n'+text.split('\n').slice(2).reverse().join('\n'));
- assert.equal(reordered.key, payload.key);
- state.teams.pop();
- assert.equal(appendImportedTeam(state, payload, () => 'again').added, true);
+test('creation requires name and catalog, overrides file name and clones imported players', () => {
+ const imported = parseTeamText(text);
+ assert.throws(() => createTeam({name:' ',listSource:'leghe'},()=> 'id'), /nome/);
+ assert.throws(() => createTeam({name:'Test',listSource:''},()=> 'id'), /listone/);
+ for (const listSource of ['leghe', 'fantamaster']) {
+  const team = createTeam({name:'My chosen name',listSource,imported},()=> 'id');
+  assert.equal(team.name,'My chosen name');
+  assert.equal(team.listSource,listSource);
+  assert.equal(team.players.length,4);
+  assert.ok(isValidState({teams:[team]}));
+  team.players[0].available=false;
+  assert.equal(imported.players[0].available,true);
+ }
 });
-test('TXT squads can use AI without selecting a catalog', async () => {
- const state = { teams: [] };
- const { team } = appendImportedTeam(state, parseTeamText(text), () => 'new');
- let called = false;
- await assert.rejects(analyzeSquad({key:'test',team,fetchImpl:async () => {called=true; return {ok:false,status:403};}}), /Accesso negato/);
+test('creation without import produces an empty squad for manual entry later', () => {
+ const team=createTeam({name:'Manual',listSource:'leghe'},()=> 'id');
+ assert.deepEqual(team.players,[]);
+ assert.equal(team.importedFrom,undefined);
+ assert.ok(isValidState({teams:[team]}));
+});
+test('imported squad uses the selected catalog for AI', async () => {
+ const team=createTeam({name:'Test',listSource:'fantamaster',imported:parseTeamText(text)},()=> 'id');
+ let called=false;
+ await assert.rejects(analyzeSquad({key:'test',team,fetchImpl:async (url,options)=> {
+  called=true;
+  assert.equal(JSON.parse(JSON.parse(options.body).input).listone,'fantamaster');
+  return {ok:false,status:403};
+ }}), /Accesso negato/);
  assert.equal(called,true);
 });

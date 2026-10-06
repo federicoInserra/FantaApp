@@ -3,7 +3,7 @@ import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './ca
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 
 import { readState, writeState } from './storage.mjs';
-import { appendImportedTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
+import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 const demoPlayers = [
   ['P', 'Alessandro Conti', 'Milano', 8.2, 7.5], ['P', 'Luca Moretti', 'Torino', 6.8, 6.9],
@@ -114,7 +114,7 @@ document.addEventListener('click', event => {
   if (action === 'remove-player') { const team = activeTeam(); const player = team.players.find(item => item.id === id); if (player && confirm(`Rimuovere ${player.name} dalla rosa?`)) { team.players = team.players.filter(item => item.id !== id); save(); render(); } }
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
-document.querySelector('#team-form').addEventListener('submit', event => { event.preventDefault(); const form = event.currentTarget; const name = form.elements.name.value.trim(); if (!name) return; const listSource = form.elements.listSource.value; if (!Object.hasOwn(LISTS, listSource)) return; const team = { id: uid(), name, listSource, formation: '3-4-3', players: [] }; state.teams.push(team); state.activeTeamId = team.id; save(); form.reset(); document.querySelector('#team-dialog').close(); navigate('rosa'); openCatalog(); });
+
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
 document.querySelector('#menu-toggle').addEventListener('click', () => { const sidebar = document.querySelector('.sidebar'); const open = sidebar.classList.toggle('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', String(open)); });
 window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
@@ -185,28 +185,35 @@ document.querySelector('#list-form').addEventListener('submit', event => {
 
 let pendingImport;
 let importPreviewRequest = 0;
-const importDialog = document.querySelector('#import-dialog');
+let importLoading = false;
+const teamDialog = document.querySelector('#team-dialog');
+const teamForm = document.querySelector('#team-form');
 const importFile = document.querySelector('#import-file');
 const importError = document.querySelector('#import-error');
 const importPreview = document.querySelector('#import-preview-content');
+const createButton = document.querySelector('#team-create');
 function resetImport() {
   importPreviewRequest++;
   pendingImport = null;
+  importLoading = false;
+  importFile.value = '';
   importPreview.replaceChildren();
   importError.hidden = true;
-  document.querySelector('#import-add').disabled = true;
+  createButton.disabled = false;
 }
-function openImportDialog() {
-  resetImport();
-  importFile.value = '';
-  importDialog.showModal();
-  importFile.focus();
-}
+document.querySelector('#team-import-toggle').addEventListener('click', () => {
+  document.querySelector('#team-import-fields').hidden = false;
+  document.querySelector('#team-import-toggle').setAttribute('aria-expanded', 'true');
+  importFile.click();
+});
+document.querySelector('#import-clear').addEventListener('click', resetImport);
 async function previewImport() {
-  resetImport();
-  const request = importPreviewRequest;
   const file = importFile.files?.[0];
+  resetImport();
   if (!file) return;
+  const request = importPreviewRequest;
+  importLoading = true;
+  createButton.disabled = true;
   try {
     if (!/\.txt$/i.test(file.name)) throw new Error('Seleziona un file con estensione .txt.');
     if (file.size > MAX_IMPORT_BYTES) throw new Error('Il file è troppo grande. Il limite è 64 KB.');
@@ -215,44 +222,44 @@ async function previewImport() {
     if (request !== importPreviewRequest) return;
     let text;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
-    catch { throw new Error('Il file non è un testo UTF-8 valido. Salvalo come testo semplice UTF-8 e riprova.'); }
-    const payload = parseTeamText(text);
-    pendingImport = payload;
-    const counts = roleOrder.map(role => `${role}: ${payload.players.filter(p => p.role === role).length}`).join(' · ');
-    importPreview.innerHTML = `<section class="import-roster"><h3>${escapeHTML(payload.name)} · ${payload.players.length} giocatori</h3><p>${counts}</p><p>Nomi, ruoli e club vengono mantenuti come nel file. Le statistiche restano vuote.</p><ul>${payload.players.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
-    document.querySelector('#import-add').disabled = false;
+    catch { throw new Error('Salva il file come testo semplice UTF-8 e riprova.'); }
+    pendingImport = parseTeamText(text);
+    const counts = roleOrder.map(role => `${role}: ${pendingImport.players.filter(p => p.role === role).length}`).join(' · ');
+    importPreview.innerHTML = `<section class="import-roster"><h3>${pendingImport.players.length} giocatori da importare</h3><p>${escapeHTML(file.name)} · ${counts}</p><ul>${pendingImport.players.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
+    createButton.disabled = false;
   } catch (error) {
     if (request !== importPreviewRequest) return;
     pendingImport = null;
     importPreview.replaceChildren();
-    importError.textContent = error.message || 'Impossibile leggere il file. Riprova.';
+    importError.textContent = (error.message || 'Impossibile leggere il file.') + ' Scegli un altro file o rimuovi l’importazione per creare una rosa vuota.';
     importError.hidden = false;
+  } finally {
+    if (request === importPreviewRequest) importLoading = false;
   }
 }
 importFile.addEventListener('change', previewImport);
-importDialog.addEventListener('close', () => { resetImport(); importFile.value = ''; });
-document.querySelector('#import-team-open').addEventListener('click', openImportDialog);
-document.querySelector('#import-add').addEventListener('click', () => {
-  if (!pendingImport) return;
+teamDialog.addEventListener('close', () => {
+  resetImport(); teamForm.reset();
+  document.querySelector('#team-import-fields').hidden = true;
+  document.querySelector('#team-import-toggle').setAttribute('aria-expanded', 'false');
+});
+teamForm.addEventListener('submit', event => {
+  event.preventDefault();
+  if (importLoading || createButton.disabled || !teamForm.reportValidity()) return;
   const previous = structuredClone(state);
   try {
-    const result = appendImportedTeam(state, pendingImport, uid);
-    if (!result.added) {
-      importError.textContent = 'Questa squadra è già stata importata su questo dispositivo.';
-      importError.hidden = false;
-      return;
-    }
+    const team = createTeam({ name: teamForm.elements.name.value, listSource: teamForm.elements.listSource.value, imported: pendingImport }, uid);
+    state.teams.push(team);
+    state.activeTeamId = team.id;
     if (!save()) {
       state = previous;
-      importError.textContent = 'Salvataggio non riuscito. La squadra non è stata importata. Mantieni aperta l’app e riprova.';
-      importError.hidden = false;
-      return;
+      throw new Error('Salvataggio non riuscito. La squadra non è stata creata. Mantieni aperta l’app e riprova.');
     }
-    importDialog.close();
+    teamDialog.close();
     navigate('rosa');
   } catch (error) {
     state = previous;
-    importError.textContent = error.message || 'Impossibile importare la squadra.';
+    importError.textContent = error.message || 'Impossibile creare la squadra.';
     importError.hidden = false;
   }
 });

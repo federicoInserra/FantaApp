@@ -31,11 +31,11 @@ export function parseTeamText(text) {
   return { name, players, key };
 }
 
-export function appendImportedTeam(state, payload, makeId) {
-  if (state.teams.some(team => team.textImportKey === payload.key)) return { added: false, state };
-  const team = { id: makeId(), name: payload.name, importedFrom: 'txt', textImportKey: payload.key,
-    formation: '3-4-3', players: payload.players.map(player => ({ ...player })) };
-  state.teams.push(team);
-  state.activeTeamId = team.id;
-  return { added: true, state, team };
+export function createTeam({ name, listSource, imported }, makeId) {
+  name = name.trim();
+  if (!name || name.length > 32) throw new Error('Inserisci un nome squadra da 1 a 32 caratteri.');
+  if (!['fantamaster', 'leghe'].includes(listSource)) throw new Error('Scegli un listone.');
+  return { id: makeId(), name, listSource, formation: '3-4-3',
+    ...(imported ? { importedFrom: 'txt' } : {}),
+    players: imported ? imported.players.map(player => ({ ...player })) : [] };
 }
