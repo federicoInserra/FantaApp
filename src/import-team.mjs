@@ -1,3 +1,4 @@
+import { defaultRules } from './rules.mjs';
 export const MAX_IMPORT_BYTES = 64 * 1024;
 const normalize = value => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('it').replace(/[’‘]/g, "'");
 function hash(value) {
@@ -35,7 +36,7 @@ export function createTeam({ name, listSource, imported }, makeId) {
   name = name.trim();
   if (!name || name.length > 32) throw new Error('Inserisci un nome squadra da 1 a 32 caratteri.');
   if (!['fantamaster', 'leghe'].includes(listSource)) throw new Error('Scegli un listone.');
-  return { id: makeId(), name, listSource, formation: '3-4-3',
+  return { id: makeId(), name, listSource, formation: '4-3-3', rules: defaultRules(),
     ...(imported ? { importedFrom: 'txt' } : {}),
     players: imported ? imported.players.map(player => ({ ...player })) : [] };
 }

@@ -1,3 +1,4 @@
+import { teamRules } from './rules.mjs';
 import { API_KEY_STORAGE, analyzeSquad } from './analysis.mjs';
 
 const analyses = new Map();
@@ -6,7 +7,7 @@ let visibleTeam;
 let key = '';
 try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; } catch { /* Settings can still be opened. */ }
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-const fingerprint = team => JSON.stringify([team.name, team.listSource, team.players.map(p => [p.id, p.name, p.club, p.role, p.available])]);
+const fingerprint = team => JSON.stringify([team.name, team.listSource, teamRules(team), team.players.map(p => [p.id, p.name, p.club, p.role, p.available])]);
 
 export function setupAnalysis() {
   const dialog = document.querySelector('#ai-settings');
@@ -41,29 +42,27 @@ function refresh() {
   host.innerHTML = `<div class="content-card compact ai-card"><p class="eyebrow">IL TUO CONSULENTE DI FANTACALCIO</p><h2>Analizza la giornata con AI</h2>
     <p class="ai-description">DeepSeek ricerca notizie e statistiche aggiornate e propone titolari, panchina e alternative. La rosa viene inviata a Fireworks; si applicano i costi del tuo account, inclusa l’eventuale ricerca web.</p>
     <label for="ai-matchday">Giornata da analizzare</label><input id="ai-matchday" maxlength="120" placeholder="Prossima giornata non ancora iniziata" value="${escape(entry.matchday)}" ${busy ? 'disabled' : ''}>
-    <label for="ai-rules">Regole della tua lega (facoltativo)</label><textarea id="ai-rules" rows="3" maxlength="2000" placeholder="Es. modificatore difesa, bonus, numero e ordine delle sostituzioni…" ${busy ? 'disabled' : ''}>${escape(entry.rules)}</textarea>
-    <p class="field-hint">Senza regole specifiche, l’AI dichiara le ipotesi classiche e non usa modificatori. Le statistiche demo non vengono inviate.</p>
+    <p class="field-hint">L’analisi usa il regolamento salvato per questa squadra. <a href="#regole" class="text-button">Modifica regole →</a></p>
     <div class="ai-actions"><button id="ai-analyze" class="button button-primary" ${pending || !key ? 'disabled' : ''}>${busy ? 'Ricerca e analisi in corso…' : 'Analizza la giornata'}</button>${busy ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}<button id="ai-configure" class="button button-outline">Impostazioni AI</button></div>
     <p role="status">${!key ? 'Aggiungi la tua chiave API per iniziare.' : pending && !busy ? 'È in corso l’analisi di un’altra squadra.' : busy ? 'L’analisi può richiedere alcuni minuti. Puoi continuare a usare l’app.' : ''}</p>
     ${entry.error ? `<p class="import-error" role="alert">${escape(entry.error)}</p>` : ''}
-    ${entry.result ? `<section class="ai-result"><h3>Consiglio per ${escape(entry.teamName)}</h3><p class="field-hint">${escape(entry.date)} · ${escape(entry.analyzedMatchday || 'Prossima giornata')} · Da verificare prima della consegna. La formazione attuale non è stata modificata.</p>${entry.fingerprint !== fingerprint(team) ? '<p class="import-error">La rosa è cambiata dopo questa analisi. Esegui una nuova ricerca.</p>' : ''}<div class="ai-result-text">${escape(entry.result.text)}</div>${entry.result.sources.length ? `<h3>Fonti</h3><ul>${entry.result.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">${escape(source.title)}</a></li>`).join('')}</ul>` : '<p class="field-hint">Nessuna fonte strutturata restituita: controlla gli eventuali riferimenti nel testo.</p>'}</section>` : ''}</div>`;
+    ${entry.result ? `<section class="ai-result"><h3>Consiglio per ${escape(entry.teamName)}</h3><p class="field-hint">${escape(entry.date)} · ${escape(entry.analyzedMatchday || 'Prossima giornata')} · Da verificare prima della consegna. La formazione attuale non è stata modificata.</p>${entry.fingerprint !== fingerprint(team) ? '<p class="import-error">La rosa o il regolamento sono cambiati dopo questa analisi. Esegui una nuova ricerca.</p>' : ''}<div class="ai-result-text">${escape(entry.result.text)}</div>${entry.result.sources.length ? `<h3>Fonti</h3><ul>${entry.result.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">${escape(source.title)}</a></li>`).join('')}</ul>` : '<p class="field-hint">Nessuna fonte strutturata restituita: controlla gli eventuali riferimenti nel testo.</p>'}</section>` : ''}</div>`;
   host.querySelector('#ai-configure').onclick = () => document.querySelector('#ai-settings-open').click();
   host.querySelector('#ai-matchday').oninput = event => { entry.matchday = event.target.value; };
-  host.querySelector('#ai-rules').oninput = event => { entry.rules = event.target.value; };
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-analyze').onclick = async () => {
     if (pending) return;
     const snapshot = structuredClone(team);
     const controller = new AbortController();
     const matchday = entry.matchday;
-    const rules = entry.rules;
+
     pending = { teamId: team.id, controller };
     entry.error = '';
     refresh();
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 180000);
     try {
-      const result = await analyzeSquad({ key, team: snapshot, matchday, rules, signal: controller.signal });
+      const result = await analyzeSquad({ key, team: snapshot, matchday, signal: controller.signal });
       if (controller.signal.aborted) throw new Error('Aborted');
       Object.assign(entry, { result, teamName: snapshot.name, analyzedMatchday: matchday, fingerprint: fingerprint(snapshot), date: new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' }) });
     } catch (error) {

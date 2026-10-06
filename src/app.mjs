@@ -1,3 +1,4 @@
+import { RULE_GROUPS, teamRules } from './rules.mjs';
 import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
@@ -23,7 +24,7 @@ catch (error) {
   document.querySelector('.save-indicator').textContent = 'Archivio non disponibile';
   throw error;
 }
-let page = ['panoramica', 'rosa', 'formazione', 'notizie'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'panoramica';
+let page = ['panoramica', 'rosa', 'formazione', 'regole', 'notizie'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'panoramica';
 let roleFilter = 'Tutti';
 const app = document.querySelector('#app');
 
@@ -82,6 +83,25 @@ function renderFormation(team) {
     <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
 }
 
+function renderRules(team) {
+  let index = 0;
+  const rules = teamRules(team);
+  return `${pageHeader('REGOLAMENTO / PER SQUADRA', 'Le tue regole', 'Modifica ogni regola per questa squadra. Il regolamento salvato viene usato automaticamente dall’analisi AI.')}${teamPicker()}
+    <p class="data-note">Le modifiche sono salvate su questo dispositivo. Svuota una regola per escluderla dall’analisi. Le altre squadre mantengono il proprio regolamento.</p>
+    <div class="rules-grid">${RULE_GROUPS.map(group => `<section class="content-card compact"><h2>${escapeHTML(group.title)}</h2>${group.rules.map(() => {
+      const i = index++;
+      return `<label class="rules-label" for="rule-${i}">Regola ${i + 1}</label><textarea id="rule-${i}" data-rule-index="${i}" rows="${rules[i].length > 160 ? 5 : 2}" maxlength="2000">${escapeHTML(rules[i])}</textarea>`;
+    }).join('')}</section>`).join('')}</div><p id="rules-save-status" role="status"></p>`;
+}
+app.addEventListener('input', event => {
+  const index = event.target.dataset.ruleIndex;
+  if (index === undefined) return;
+  const team = activeTeam();
+  team.rules = [...teamRules(team)];
+  team.rules[Number(index)] = event.target.value;
+  document.querySelector('#rules-save-status').textContent = save() ? 'Regolamento salvato per questa squadra.' : 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
+});
+
 function renderNews() {
   const news = [
     { category: 'CONSIGLIO DEMO', date: 'ESEMPIO', title: 'La forma recente può aiutare a scegliere', body: 'Confronta la forma e la media voto che hai inserito per valutare i tuoi titolari.' },
@@ -93,9 +113,9 @@ function renderNews() {
 
 function render() {
   const team = activeTeam();
-  document.querySelector('#breadcrumb').textContent = ({ panoramica: 'Panoramica', rosa: 'La rosa', formazione: 'Formazione', notizie: 'Notizie demo' })[page];
+  document.querySelector('#breadcrumb').textContent = ({ panoramica: 'Panoramica', rosa: 'La rosa', formazione: 'Formazione', regole: 'Regole', notizie: 'Notizie demo' })[page];
   document.querySelectorAll('#main-nav a').forEach(link => { const active = link.dataset.page === page; link.classList.toggle('active', active); if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
-  app.innerHTML = `<div class="page-content">${({ panoramica: renderOverview, rosa: renderRoster, formazione: renderFormation, notizie: renderNews })[page](team)}</div>`;
+  app.innerHTML = `<div class="page-content">${({ panoramica: renderOverview, rosa: renderRoster, formazione: renderFormation, regole: renderRules, notizie: renderNews })[page](team)}</div>`;
   if (page === 'formazione') mountAnalysis(team);
 }
 
@@ -117,7 +137,7 @@ document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEve
 
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
 document.querySelector('#menu-toggle').addEventListener('click', () => { const sidebar = document.querySelector('.sidebar'); const open = sidebar.classList.toggle('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', String(open)); });
-window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
+window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'regole', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
 setupAnalysis();
 save(); render();
 

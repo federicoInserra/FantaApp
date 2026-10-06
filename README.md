@@ -6,7 +6,7 @@ Una piccola app statica per organizzare più squadre Fantacalcio, gestire le ros
 
 - Crea più squadre, passa da una all'altra ed elimina quelle che non servono.
 - Scegli FantaMaster o Leghe per ogni nuova squadra. Cerca e aggiungi giocatori dal relativo listone, filtra per ruolo e segna le assenze.
-- Scegli tra sei moduli. L'undici suggerito seleziona i giocatori disponibili con il punteggio più alto per ruolo: **55% forma + 45% media voto**.
+- Scegli tra otto moduli. L'undici suggerito seleziona i giocatori disponibili con il punteggio più alto per ruolo: **55% forma + 45% media voto**.
 - Salva le modifiche nel `localStorage` del browser.
 
 Al primo avvio è presente una squadra di esempio. **Nomi, statistiche e notizie sono dimostrativi**: l'app non riceve dati sportivi in tempo reale. I dati restano nel browser usato e non si sincronizzano fra dispositivi.
@@ -76,16 +76,22 @@ Le squadre create nelle versioni precedenti vengono conservate. L’importazione
 
 Apri **Impostazioni AI**, incolla la tua chiave Fireworks e premi **Salva chiave**. La chiave viene conservata separatamente dalle rose nel localStorage (`fantaapp.fireworks.key.v1`), non viene pubblicata né inclusa nei dati delle squadre. **Dimentica chiave** la rimuove. Il localStorage è leggibile dagli script dello stesso origin, incluse altre app sul medesimo dominio GitHub Pages: usa una chiave dedicata e un dispositivo fidato.
 
-In **Formazione**, scegli una rosa reale, indica eventualmente la giornata e le regole della lega e premi **Analizza la giornata**. L’app chiama direttamente `https://api.fireworks.ai/inference/v1/responses` con `accounts/fireworks/models/deepseek-v4p1-flash`, un prompt predefinito in italiano e lo strumento `web_search`. Il prompt invia nomi, club, ruoli e disponibilità; esclude le statistiche demo. Richiede titolari, panchina, alternative, incertezze e fonti. L’output è un consiglio testuale da verificare: non applica automaticamente la formazione e non costituisce un’ottimizzazione numerica validata.
+In **Formazione**, scegli una rosa reale, indica eventualmente la giornata e premi **Analizza la giornata**. L’app chiama direttamente `https://api.fireworks.ai/inference/v1/responses` con `accounts/fireworks/models/deepseek-v4p1-flash`, un prompt predefinito in italiano e lo strumento `web_search`. Il prompt invia nomi, club, ruoli e disponibilità; esclude le statistiche demo. Richiede titolari, panchina, alternative, incertezze e fonti. L’output è un consiglio testuale da verificare: non applica automaticamente la formazione e non costituisce un’ottimizzazione numerica validata.
 
 La ricerca web deve essere abilitata sull’account Fireworks. Errori di autorizzazione, credito, limiti, rete e risposte incomplete sono mostrati nell’app. Una risposta senza ricerca web completata viene rifiutata. Sono consentite al massimo sei chiamate agli strumenti per risposta e 6.000 token di output, con un timeout locale di tre minuti; annullare non garantisce che Fireworks interrompa l’elaborazione o la fatturazione. Non sono previsti tentativi automatici.
 
 Le analisi rimangono in memoria durante la sessione, distinte per squadra; ricaricare la pagina le elimina. Una modifica della rosa segnala il risultato precedente come superato. La richiesta usa `store: false`; si applicano comunque le condizioni di trattamento dati del provider. Internet e credito Fireworks sono necessari; nessun backend o account FantaApp è richiesto. Le fonti strutturate con URL HTTP(S) vengono mostrate come link e tutto il testo del modello viene visualizzato senza eseguire HTML.
 
-Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 12.
+Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 13.
 
 ## Tema visivo
 
 Interfaccia minimale in bianco caldo e carbone con accenti rossi, tipografia a matrice di punti e illustrazione SVG originale del pallone. Il font Doto è incluso localmente con licenza SIL Open Font License in `fonts/OFL.txt`, così il tema resta disponibile offline senza richieste a servizi di font esterni. Layout adattivo per desktop e smartphone, focus visibile e supporto alla preferenza di movimento ridotto.
 
 Il campo di testo aggiorna automaticamente l’anteprima. Caricare un file sostituisce il testo; puoi poi modificarlo. Svuotare il campo o rimuovere l’importazione permette di creare una rosa vuota. Le modifiche annullano eventuali letture di file precedenti ancora in corso.
+
+## Regole per squadra
+
+La voce **Regole** mostra il regolamento della squadra attiva. Tutte le 18 regole del documento fornito sono precompilate, suddivise in configurazione, modificatore difesa, punteggio, principio di formazione e formato delle formazioni. Ogni campo è modificabile e viene salvato automaticamente nel localStorage della squadra. Svuotare un campo esclude quella regola dal prompt AI. Le squadre esistenti mostrano gli stessi valori predefiniti fino alla prima modifica; le nuove squadre ricevono copie indipendenti.
+
+L’analisi AI usa automaticamente il regolamento salvato e segnala una raccomandazione precedente come superata quando cambiano regole o rosa. Il selettore locale include gli otto moduli del regolamento iniziale; le modifiche testuali alle regole guidano l’AI, senza costituire vincoli automatici sul selettore manuale, sulla dimensione della rosa o sul calcolo dei punteggi demo. Le nuove squadre partono dal 4-3-3; quelle esistenti conservano il modulo scelto.
