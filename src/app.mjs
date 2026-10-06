@@ -1,8 +1,9 @@
+import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
 import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 
 import { readState, writeState } from './storage.mjs';
-import { appendImportedTeam, decodeImportFragment } from './import-team.mjs';
+import { appendImportedTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 const demoPlayers = [
   ['P', 'Alessandro Conti', 'Milano', 8.2, 7.5], ['P', 'Luca Moretti', 'Torino', 6.8, 6.9],
@@ -48,16 +49,16 @@ function formatScore(value) { return value == null ? '—' : Number(value).toFix
 function button(label, action, className = 'button button-primary') { return `<button class="${className}" type="button" data-action="${action}">${label}</button>`; }
 function roleBadge(role) { return `<span class="role-badge role-${role}">${role}</span>`; }
 function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p class="heading-description">${description}</p></div>${action}</div>`; }
-function teamPicker() { return `<div class="team-picker"><label for="team-select">SQUADRA ATTIVA · ${activeTeam().listSource ? LISTS[activeTeam().listSource] : 'Listone da scegliere'}</label><div class="team-select-row"><select id="team-select" aria-label="Seleziona squadra">${state.teams.map(team => `<option value="${escapeHTML(team.id)}" ${team.id === activeTeam().id ? 'selected' : ''}>${escapeHTML(team.name)}</option>`).join('')}</select>${button('+ Nuova squadra', 'new-team', 'button button-outline')}${state.teams.length > 1 ? button('Elimina squadra', 'remove-team', 'button button-quiet') : ''}</div></div>`; }
+function teamPicker() { return `<div class="team-picker"><label for="team-select">SQUADRA ATTIVA · ${activeTeam().listSource ? LISTS[activeTeam().listSource] : activeTeam().importedFrom === 'txt' ? 'Rosa da file TXT' : 'Listone da scegliere'}</label><div class="team-select-row"><select id="team-select" aria-label="Seleziona squadra">${state.teams.map(team => `<option value="${escapeHTML(team.id)}" ${team.id === activeTeam().id ? 'selected' : ''}>${escapeHTML(team.name)}</option>`).join('')}</select>${button('+ Nuova squadra', 'new-team', 'button button-outline')}${state.teams.length > 1 ? button('Elimina squadra', 'remove-team', 'button button-quiet') : ''}</div></div>`; }
 
 function renderOverview(team) {
   const lineup = suggestLineup(team.players, team.formation);
   const available = team.players.filter(player => player.available !== false).length;
   const starting = Object.values(lineup.starters).flat().length;
-  return `${pageHeader('BENVENUTO NELLA TUA PANCHINA', 'Il tuo fantacalcio,<br><em>tutto sotto controllo.</em>', 'Organizza la rosa, scegli il modulo e prepara la prossima formazione.', button('Prepara la formazione <span>↗</span>', 'go-formation'))}
+  return `${pageHeader('FANTACALCIO / IL TUO SPAZIO', 'La tua rosa.<br><em>La prossima mossa.</em>', 'Ogni giornata, una nuova possibilità. Prepara la tua formazione.', button('Prepara la formazione <span>↗</span>', 'go-formation'))}
     ${teamPicker()}
     <div class="hero-grid">
-      <section class="feature-card"><div class="feature-card-top"><span class="feature-icon">✦</span><span class="feature-label">LA TUA SQUADRA</span></div><h2>${escapeHTML(team.name)}</h2><p>Ogni grande giornata comincia da una buona scelta.</p><div class="feature-card-bottom"><span>MODULO ATTUALE <strong>${escapeHTML(team.formation)}</strong></span><span class="decorative-ball">⚽</span></div></section>
+      <section class="feature-card"><div class="feature-card-top"><span class="feature-icon">✦</span><span class="feature-label">LA TUA SQUADRA</span></div><h2>${escapeHTML(team.name)}</h2><p>Ogni grande giornata comincia da una buona scelta.</p><div class="feature-card-bottom"><span>MODULO ATTUALE <strong>${escapeHTML(team.formation)}</strong></span><span class="decorative-ball" aria-hidden="true"><img src="./icons/pixel-ball.svg" alt="" /></span></div></section>
       <section class="next-card"><div class="card-heading"><span class="card-icon">▦</span><span>Formazione suggerita</span></div><strong>${starting}<small>/11</small></strong><p>${lineup.complete ? 'Tutti i ruoli sono coperti. La tua formazione è pronta.' : 'Aggiungi giocatori disponibili per completare l’undici.'}</p>${button('Vedi formazione <span>→</span>', 'go-formation', 'text-button')}</section>
     </div>
     <div class="section-title-row"><div><p class="eyebrow">A COLPO D’OCCHIO</p><h2>I numeri della rosa</h2></div>${button('Gestisci la rosa <span>→</span>', 'go-roster', 'text-button')}</div>
@@ -76,8 +77,8 @@ function renderRoster(team) {
 function renderFormation(team) {
   const lineup = suggestLineup(team.players, team.formation);
   const count = Object.values(lineup.starters).flat().length;
-  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Una bozza per organizzare i ruoli. Le statistiche reali saranno integrate in seguito.')}${teamPicker()}
-    <div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
+  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}${teamPicker()}
+    <div id="ai-analysis"></div><div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
     <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
 }
 
@@ -95,6 +96,7 @@ function render() {
   document.querySelector('#breadcrumb').textContent = ({ panoramica: 'Panoramica', rosa: 'La rosa', formazione: 'Formazione', notizie: 'Notizie demo' })[page];
   document.querySelectorAll('#main-nav a').forEach(link => { const active = link.dataset.page === page; link.classList.toggle('active', active); if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
   app.innerHTML = `<div class="page-content">${({ panoramica: renderOverview, rosa: renderRoster, formazione: renderFormation, notizie: renderNews })[page](team)}</div>`;
+  if (page === 'formazione') mountAnalysis(team);
 }
 
 function navigate(target) { page = target; location.hash = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -116,6 +118,7 @@ document.querySelector('#team-form').addEventListener('submit', event => { event
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
 document.querySelector('#menu-toggle').addEventListener('click', () => { const sidebar = document.querySelector('.sidebar'); const open = sidebar.classList.toggle('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', String(open)); });
 window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
+setupAnalysis();
 save(); render();
 
 let catalogPlayers = [];
@@ -181,71 +184,59 @@ document.querySelector('#list-form').addEventListener('submit', event => {
 });
 
 let pendingImport;
-let importCatalog = [];
 let importPreviewRequest = 0;
 const importDialog = document.querySelector('#import-dialog');
-const importLink = document.querySelector('#import-link');
+const importFile = document.querySelector('#import-file');
 const importError = document.querySelector('#import-error');
 const importPreview = document.querySelector('#import-preview-content');
-function openImportDialog(value = '') {
+function resetImport() {
   importPreviewRequest++;
   pendingImport = null;
-  importCatalog = [];
-  importLink.value = value;
   importPreview.replaceChildren();
   importError.hidden = true;
   document.querySelector('#import-add').disabled = true;
-  importDialog.showModal();
-  if (value) previewImport();
-  else importLink.focus();
 }
-function payloadFromText(value) {
-  const input = value.trim();
-  const hash = input.startsWith('#') ? input : new URL(input, location.href).hash;
-  return decodeImportFragment(hash);
+function openImportDialog() {
+  resetImport();
+  importFile.value = '';
+  importDialog.showModal();
+  importFile.focus();
 }
 async function previewImport() {
-  const request = ++importPreviewRequest;
-  pendingImport = null;
-  importCatalog = [];
-  importError.hidden = true;
-  document.querySelector('#import-add').disabled = true;
+  resetImport();
+  const request = importPreviewRequest;
+  const file = importFile.files?.[0];
+  if (!file) return;
   try {
-    const payload = payloadFromText(importLink.value);
-    if (!payload) throw new Error('Incolla un link o un codice di importazione valido.');
-    importPreview.textContent = 'Caricamento listone…';
-    const players = await loadCatalog(payload.source);
+    if (!/\.txt$/i.test(file.name)) throw new Error('Seleziona un file con estensione .txt.');
+    if (file.size > MAX_IMPORT_BYTES) throw new Error('Il file è troppo grande. Il limite è 64 KB.');
+    importPreview.textContent = 'Lettura del file…';
+    const buffer = await file.arrayBuffer();
     if (request !== importPreviewRequest) return;
-    const byId = new Map(players.map(player => [player.id, player]));
-    const resolved = payload.ids.map(id => byId.get(id));
-    if (resolved.some(player => !player)) throw new Error('Il listone non contiene tutti i giocatori del codice.');
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+    catch { throw new Error('Il file non è un testo UTF-8 valido. Salvalo come testo semplice UTF-8 e riprova.'); }
+    const payload = parseTeamText(text);
     pendingImport = payload;
-    importCatalog = players;
-    importPreview.innerHTML = `<section class="import-roster"><h3>${escapeHTML(payload.name)} · ${resolved.length} giocatori</h3><p>Listone ${escapeHTML(LISTS[payload.source])}. Forma e media voto restano vuote.</p><ul>${resolved.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
+    const counts = roleOrder.map(role => `${role}: ${payload.players.filter(p => p.role === role).length}`).join(' · ');
+    importPreview.innerHTML = `<section class="import-roster"><h3>${escapeHTML(payload.name)} · ${payload.players.length} giocatori</h3><p>${counts}</p><p>Nomi, ruoli e club vengono mantenuti come nel file. Le statistiche restano vuote.</p><ul>${payload.players.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
     document.querySelector('#import-add').disabled = false;
   } catch (error) {
     if (request !== importPreviewRequest) return;
     pendingImport = null;
     importPreview.replaceChildren();
-    importError.textContent = error.message || 'Impossibile leggere questo codice.';
+    importError.textContent = error.message || 'Impossibile leggere il file. Riprova.';
     importError.hidden = false;
   }
 }
-importLink.addEventListener('input', () => {
-  importPreviewRequest++;
-  pendingImport = null;
-  importCatalog = [];
-  importPreview.replaceChildren();
-  importError.hidden = true;
-  document.querySelector('#import-add').disabled = true;
-});
-document.querySelector('#import-team-open').addEventListener('click', () => openImportDialog());
-document.querySelector('#import-preview').addEventListener('click', previewImport);
+importFile.addEventListener('change', previewImport);
+importDialog.addEventListener('close', () => { resetImport(); importFile.value = ''; });
+document.querySelector('#import-team-open').addEventListener('click', openImportDialog);
 document.querySelector('#import-add').addEventListener('click', () => {
   if (!pendingImport) return;
   const previous = structuredClone(state);
   try {
-    const result = appendImportedTeam(state, pendingImport, importCatalog, uid);
+    const result = appendImportedTeam(state, pendingImport, uid);
     if (!result.added) {
       importError.textContent = 'Questa squadra è già stata importata su questo dispositivo.';
       importError.hidden = false;
@@ -257,9 +248,7 @@ document.querySelector('#import-add').addEventListener('click', () => {
       importError.hidden = false;
       return;
     }
-    const importedHash = location.hash;
     importDialog.close();
-    if (importedHash.startsWith('#import=')) history.replaceState(null, '', `${location.pathname}${location.search}#rosa`);
     navigate('rosa');
   } catch (error) {
     state = previous;
@@ -267,9 +256,3 @@ document.querySelector('#import-add').addEventListener('click', () => {
     importError.hidden = false;
   }
 });
-function openFragmentImport() {
-  if (!location.hash.startsWith('#import=')) return;
-  openImportDialog(location.href);
-}
-openFragmentImport();
-window.addEventListener('hashchange', openFragmentImport);

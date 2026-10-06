@@ -53,8 +53,37 @@ python3 scripts/import-player-lists.py /percorso/fantamaster_list.xlsx /percorso
 
 I giocatori nuovi non ricevono statistiche inventate: forma e media voto sono assenti. La formazione rimane una bozza indicativa fino all’integrazione delle statistiche reali. I listoni non si aggiornano automaticamente. Le rose già salvate vengono conservate; scelgono il listone al prossimo inserimento di un giocatore.
 
-## Importare una squadra tramite link
+## Importare una squadra da TXT
 
-Dal menu dell’app installata scegli **Importa squadra**, incolla un link di importazione, visualizza l’anteprima e tocca **Aggiungi squadra**. Il link contiene nel frammento URL solo il nome, il listone e gli ID dei giocatori; i dati dei giocatori vengono risolti dal catalogo locale senza importare statistiche. Il roster personale non viene inserito nel repository. Chi riceve il link può leggerne il contenuto.
+Dal menu scegli **Importa squadra**, seleziona un file `.txt`, controlla l’anteprima e premi **Aggiungi squadra**. Il file viene letto localmente senza inviarlo a servizi esterni. Formato:
 
-La squadra viene salvata solo nell’archivio del dispositivo dove confermi l’importazione. Per iPhone, incolla il link direttamente nell’app avviata dalla schermata Home: un’importazione in Safari può usare un archivio separato. Una seconda importazione dello stesso nome, listone e gruppo di giocatori non crea duplicati né sostituisce modifiche successive. Non è una sincronizzazione cloud.
+```text
+Squadra: La mia squadra
+
+P - Nome portiere (Club)
+D - Nome difensore (Club)
+C - Nome centrocampista (Club)
+A - Nome attaccante (Club)
+```
+
+Usa testo semplice UTF-8, una riga per giocatore e i ruoli P/D/C/A. Sono accettati righe vuote, apostrofi, accenti e terminazioni Windows o Mac. Limiti: 32 caratteri per il nome della squadra, 40 giocatori, 64 KB. Le righe non valide e i giocatori duplicati sono segnalati con il numero di riga; non vengono ignorati silenziosamente.
+
+Nomi, club e ruoli sono conservati come scritti, anche se il giocatore non è nei listoni. Non è richiesto un catalogo e non vengono inventate statistiche. La squadra importata è subito utilizzabile nell’analisi AI. Per aggiungere in seguito giocatori dai cataloghi, l’app richiede il listone; la rosa importata viene conservata.
+
+Importare due volte la stessa rosa con lo stesso nome non crea duplicati né sovrascrive le modifiche. Dopo aver eliminato la squadra, il file può essere importato nuovamente. Le squadre esistenti restano invariate. L’interfaccia di importazione tramite link è stata sostituita da quella TXT. Su iPhone, seleziona il file dall’app avviata dalla schermata Home per salvare la rosa nel relativo archivio.
+
+## Analisi AI della giornata
+
+Apri **Impostazioni AI**, incolla la tua chiave Fireworks e premi **Salva chiave**. La chiave viene conservata separatamente dalle rose nel localStorage (`fantaapp.fireworks.key.v1`), non viene pubblicata né inclusa nei dati delle squadre. **Dimentica chiave** la rimuove. Il localStorage è leggibile dagli script dello stesso origin, incluse altre app sul medesimo dominio GitHub Pages: usa una chiave dedicata e un dispositivo fidato.
+
+In **Formazione**, scegli una rosa reale, indica eventualmente la giornata e le regole della lega e premi **Analizza la giornata**. L’app chiama direttamente `https://api.fireworks.ai/inference/v1/responses` con `accounts/fireworks/models/deepseek-v4p1-flash`, un prompt predefinito in italiano e lo strumento `web_search`. Il prompt invia nomi, club, ruoli e disponibilità; esclude le statistiche demo. Richiede titolari, panchina, alternative, incertezze e fonti. L’output è un consiglio testuale da verificare: non applica automaticamente la formazione e non costituisce un’ottimizzazione numerica validata.
+
+La ricerca web deve essere abilitata sull’account Fireworks. Errori di autorizzazione, credito, limiti, rete e risposte incomplete sono mostrati nell’app. Una risposta senza ricerca web completata viene rifiutata. Sono consentite al massimo sei chiamate agli strumenti per risposta e 6.000 token di output, con un timeout locale di tre minuti; annullare non garantisce che Fireworks interrompa l’elaborazione o la fatturazione. Non sono previsti tentativi automatici.
+
+Le analisi rimangono in memoria durante la sessione, distinte per squadra; ricaricare la pagina le elimina. Una modifica della rosa segnala il risultato precedente come superato. La richiesta usa `store: false`; si applicano comunque le condizioni di trattamento dati del provider. Internet e credito Fireworks sono necessari; nessun backend o account FantaApp è richiesto. Le fonti strutturate con URL HTTP(S) vengono mostrate come link e tutto il testo del modello viene visualizzato senza eseguire HTML.
+
+Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 10.
+
+## Tema visivo
+
+Interfaccia minimale in bianco caldo e carbone con accenti rossi, tipografia a matrice di punti e illustrazione SVG originale del pallone. Il font Doto è incluso localmente con licenza SIL Open Font License in `fonts/OFL.txt`, così il tema resta disponibile offline senza richieste a servizi di font esterni. Layout adattivo per desktop e smartphone, focus visibile e supporto alla preferenza di movimento ridotto.
