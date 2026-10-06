@@ -189,14 +189,16 @@ let importLoading = false;
 const teamDialog = document.querySelector('#team-dialog');
 const teamForm = document.querySelector('#team-form');
 const importFile = document.querySelector('#import-file');
+const importText = document.querySelector('#import-text');
 const importError = document.querySelector('#import-error');
 const importPreview = document.querySelector('#import-preview-content');
 const createButton = document.querySelector('#team-create');
-function resetImport() {
+function resetImport(clearText = true) {
   importPreviewRequest++;
   pendingImport = null;
   importLoading = false;
   importFile.value = '';
+  if (clearText) importText.value = '';
   importPreview.replaceChildren();
   importError.hidden = true;
   createButton.disabled = false;
@@ -204,9 +206,9 @@ function resetImport() {
 document.querySelector('#team-import-toggle').addEventListener('click', () => {
   document.querySelector('#team-import-fields').hidden = false;
   document.querySelector('#team-import-toggle').setAttribute('aria-expanded', 'true');
-  importFile.click();
+  importText.focus();
 });
-document.querySelector('#import-clear').addEventListener('click', resetImport);
+document.querySelector('#import-clear').addEventListener('click', () => resetImport());
 async function previewImport() {
   const file = importFile.files?.[0];
   resetImport();
@@ -223,10 +225,8 @@ async function previewImport() {
     let text;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
     catch { throw new Error('Salva il file come testo semplice UTF-8 e riprova.'); }
-    pendingImport = parseTeamText(text);
-    const counts = roleOrder.map(role => `${role}: ${pendingImport.players.filter(p => p.role === role).length}`).join(' · ');
-    importPreview.innerHTML = `<section class="import-roster"><h3>${pendingImport.players.length} giocatori da importare</h3><p>${escapeHTML(file.name)} · ${counts}</p><ul>${pendingImport.players.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
-    createButton.disabled = false;
+    importText.value = text;
+    previewPastedText();
   } catch (error) {
     if (request !== importPreviewRequest) return;
     pendingImport = null;
@@ -237,6 +237,21 @@ async function previewImport() {
     if (request === importPreviewRequest) importLoading = false;
   }
 }
+function previewPastedText() {
+  resetImport(false);
+  if (!importText.value.trim()) return;
+  createButton.disabled = true;
+  try {
+    pendingImport = parseTeamText(importText.value);
+    const counts = roleOrder.map(role => `${role}: ${pendingImport.players.filter(p => p.role === role).length}`).join(' · ');
+    importPreview.innerHTML = `<section class="import-roster"><h3>${pendingImport.players.length} giocatori da importare</h3><p>${counts}</p><ul>${pendingImport.players.map(player => `<li>${roleBadge(player.role)} <strong>${escapeHTML(player.name)}</strong><span>${escapeHTML(player.club)}</span></li>`).join('')}</ul></section>`;
+    createButton.disabled = false;
+  } catch (error) {
+    importError.textContent = error.message + ' Correggi il testo o rimuovi l’importazione per creare una rosa vuota.';
+    importError.hidden = false;
+  }
+}
+importText.addEventListener('input', previewPastedText);
 importFile.addEventListener('change', previewImport);
 teamDialog.addEventListener('close', () => {
   resetImport(); teamForm.reset();

@@ -55,7 +55,7 @@ I giocatori nuovi non ricevono statistiche inventate: forma e media voto sono as
 
 ## Creare una squadra e importare giocatori
 
-Apri **Nuova squadra**, inserisci il **nome** e scegli il **listone** (entrambi obbligatori). Puoi creare una rosa vuota e aggiungere giocatori manualmente in seguito, oppure usare **Importa giocatori da TXT (facoltativo)** per selezionare un file e controllare l’anteprima prima di premere **Crea squadra**.
+Apri **Nuova squadra**, inserisci il **nome** e scegli il **listone** (entrambi obbligatori). Puoi creare una rosa vuota e aggiungere giocatori manualmente in seguito, oppure usare **Importa giocatori (facoltativo)** per incollare il testo direttamente o selezionare un file e controllare l’anteprima prima di premere **Crea squadra**.
 
 ```text
 Squadra: Nome nel file
@@ -82,8 +82,10 @@ La ricerca web deve essere abilitata sull’account Fireworks. Errori di autoriz
 
 Le analisi rimangono in memoria durante la sessione, distinte per squadra; ricaricare la pagina le elimina. Una modifica della rosa segnala il risultato precedente come superato. La richiesta usa `store: false`; si applicano comunque le condizioni di trattamento dati del provider. Internet e credito Fireworks sono necessari; nessun backend o account FantaApp è richiesto. Le fonti strutturate con URL HTTP(S) vengono mostrate come link e tutto il testo del modello viene visualizzato senza eseguire HTML.
 
-Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 11.
+Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 12.
 
 ## Tema visivo
 
 Interfaccia minimale in bianco caldo e carbone con accenti rossi, tipografia a matrice di punti e illustrazione SVG originale del pallone. Il font Doto è incluso localmente con licenza SIL Open Font License in `fonts/OFL.txt`, così il tema resta disponibile offline senza richieste a servizi di font esterni. Layout adattivo per desktop e smartphone, focus visibile e supporto alla preferenza di movimento ridotto.
+
+Il campo di testo aggiorna automaticamente l’anteprima. Caricare un file sostituisce il testo; puoi poi modificarlo. Svuotare il campo o rimuovere l’importazione permette di creare una rosa vuota. Le modifiche annullano eventuali letture di file precedenti ancora in corso.

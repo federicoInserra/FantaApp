@@ -69,8 +69,11 @@
         <select id="team-list" name="listSource" required><option value="" disabled selected>Scegli un listone</option><option value="fantamaster">FantaMaster</option><option value="leghe">Leghe</option></select>
         <p class="field-hint">Il listone viene assegnato alla squadra e usato per aggiungere giocatori. Puoi iniziare con una rosa vuota.</p>
         <div class="team-import-section">
-          <button id="team-import-toggle" class="button button-outline full-width" type="button" aria-expanded="false" aria-controls="team-import-fields">Importa giocatori da TXT (facoltativo)</button>
+          <button id="team-import-toggle" class="button button-outline full-width" type="button" aria-expanded="false" aria-controls="team-import-fields">Importa giocatori (facoltativo)</button>
           <div id="team-import-fields" hidden>
+            <label for="import-text">Incolla il testo della squadra</label>
+            <textarea id="import-text" rows="7" maxlength="65536" spellcheck="false" aria-describedby="import-format" placeholder="Squadra: Nome squadra&#10;&#10;P - Maignan (Milan)&#10;D - Akanji (Inter)&#10;C - Barella (Inter)&#10;A - Lucca (Napoli)"></textarea>
+            <p class="field-hint">L’anteprima si aggiorna mentre scrivi. In alternativa, scegli un file TXT: il suo contenuto sostituirà il testo qui sopra.</p>
             <label for="import-file">File squadra (.txt)</label>
             <input id="import-file" type="file" accept=".txt,text/plain" aria-describedby="import-format" />
             <p class="field-hint">Il nome inserito sopra ha sempre la precedenza sul nome nel file. Ruoli e club vengono mantenuti come scritti nel TXT, senza convertirli in quelli del listone.</p>
