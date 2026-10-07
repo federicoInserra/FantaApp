@@ -1,12 +1,12 @@
 import { getAIStatus } from './ai-api.mjs';
 import { HOSTED_API } from './deployment.mjs';
-import { UNDERSTAT_URL_STORAGE, understatServiceURL, fetchUnderstat } from './understat.mjs';
+import { UNDERSTAT_URL_STORAGE } from './understat.mjs';
 import { teamRules } from './rules.mjs';
 import { API_KEY_STORAGE, analyzeSquad } from './analysis.mjs';
 import { TAVILY_KEY_STORAGE, researchSquad, researchBudget, loadResearch, saveResearch, staleReason, FIELDS } from './research.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
-try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Settings remain accessible. */ }
+try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Legacy credentials are optional. */ }
 let serverStatus = {fireworks:false,tavily:false};
 const fireworksReady = () => HOSTED_API ? serverStatus.fireworks : Boolean(key);
 const tavilyReady = () => HOSTED_API ? serverStatus.tavily : Boolean(tavilyKey);
@@ -20,50 +20,11 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;
 const fingerprint = team => JSON.stringify([team.name, team.listSource, teamRules(team), team.players.map(p => [p.id,p.name,p.club,p.role,p.available])]);
 const dateLabel = date => new Date(date).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
 export function setupAnalysis() {
-  const dialog = document.querySelector('#ai-settings');
-  const input = document.querySelector('#ai-key'), tavilyInput = document.querySelector('#tavily-key'), status = document.querySelector('#ai-key-status');
-  const understatInput=document.querySelector('#understat-url'), understatStatus=document.querySelector('#understat-status'), check=document.querySelector('#understat-check');
-  document.querySelector('#understat-service-config').hidden=HOSTED_API;
-  if (HOSTED_API) check.textContent='Verifica Understat';
-  document.querySelector('#local-ai-credentials').hidden=HOSTED_API;
-  document.querySelector('#local-ai-actions').hidden=HOSTED_API;
-  document.querySelector('#hosted-ai-credentials').hidden=!HOSTED_API;
-  check.onclick=async()=>{
-    check.disabled=true;understatStatus.textContent='Collegamento in corso…';
-    try { const data=await fetchUnderstat({serviceURL:understatInput.value,signal:AbortSignal.timeout(20000)});understatStatus.textContent=`Collegato: ${data.players.length} giocatori, ${data.teams.length} squadre · ${data.season}/${data.season+1}. Ultima partita registrata: ${data.latestMatchAt ? dateLabel(data.latestMatchAt) : 'nessuna'}.`; }
-    catch(error){understatStatus.textContent=error.message;}finally{check.disabled=false;}
-  };
-  const showStatus = () => { if (HOSTED_API) { status.textContent = `Fireworks: ${serverStatus.fireworks ? 'configurato sul server' : 'da configurare'} · Tavily: ${serverStatus.tavily ? 'configurato sul server' : 'da configurare'}. La verifica controlla la presenza delle chiavi; non consuma credito.`; return; } status.textContent = `Fireworks: ${key ? 'chiave salvata' : 'da configurare'} · Tavily: ${tavilyKey ? 'chiave salvata' : 'da configurare'} · Understat: ${understatURL ? 'URL salvato' : 'da configurare'}`; };
-  const serverCheck = document.querySelector('#ai-server-check');
-  const checkServer = async () => {
-    serverCheck.disabled=true; status.textContent='Verifica dei servizi…';
-    try { serverStatus=await getAIStatus({signal:AbortSignal.timeout(10000)}); showStatus(); }
-    catch(error) { serverStatus={fireworks:false,tavily:false}; status.textContent=error.message; }
-    finally { serverCheck.disabled=false; refresh(); }
-  };
-  serverCheck.onclick=checkServer;
-  if (HOSTED_API) void checkServer();
-  document.querySelector('#ai-settings-open').onclick = () => { input.value = ''; tavilyInput.value = ''; understatInput.value=understatURL; understatStatus.textContent=''; showStatus(); dialog.showModal(); if (HOSTED_API) void checkServer(); };
-  document.querySelector('#ai-key-form').onsubmit = event => {
-    event.preventDefault();
-    if (HOSTED_API) return;
-    const nextKey = input.value.trim() || key, nextTavily = tavilyInput.value.trim() || tavilyKey;
-    if ([nextKey,nextTavily].some(value => /\s/.test(value))) { status.textContent = 'Le chiavi non possono contenere spazi.'; return; }
-    try {
-      const service=HOSTED_API ? location.origin : understatInput.value.trim() ? understatServiceURL(understatInput.value) : '';
-      localStorage.setItem(UNDERSTAT_URL_STORAGE,service);understatURL=service;
-      if (input.value.trim()) { localStorage.setItem(API_KEY_STORAGE, nextKey); key = nextKey; }
-      if (tavilyInput.value.trim()) { localStorage.setItem(TAVILY_KEY_STORAGE, nextTavily); tavilyKey = nextTavily; }
-      input.value = ''; tavilyInput.value = ''; showStatus(); refresh();
-    } catch(error) { status.textContent = error.message || 'Salvataggio non riuscito.'; }
-  };
-  for (const [id, storageKey] of [['ai-key-forget',API_KEY_STORAGE],['tavily-key-forget',TAVILY_KEY_STORAGE]]) {
-    document.querySelector('#'+id).onclick = () => {
-      try { localStorage.removeItem(storageKey); if (storageKey === API_KEY_STORAGE) key = ''; else tavilyKey = ''; pending?.controller.abort(); showStatus(); refresh(); }
-      catch { status.textContent = 'Impossibile rimuovere la chiave.'; }
-    };
+  if (HOSTED_API) {
+    getAIStatus({signal:AbortSignal.timeout(10000)})
+      .then(value=>{serverStatus=value;refresh();})
+      .catch(()=>{serverStatus={fireworks:false,tavily:false};refresh();});
   }
-  dialog.addEventListener('close', () => { input.value = ''; tavilyInput.value = ''; });
 }
 export function mountAnalysis(team) { visibleTeam = team; refresh(); }
 function understatView(data) {
@@ -90,11 +51,10 @@ function refresh() {
     <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Understat fornisce le statistiche. Tavily cerca voti e notizie; GLM li organizza. Budget indicativo: ${researchBudget(team)} crediti Tavily per aggiornamento, più il consumo Fireworks. I dati restano disponibili su questo dispositivo.</p><button id="ai-research" class="button button-primary" ${pending || !fireworksReady() || !tavilyReady() || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
     ${understatView(entry.research?.understat)}${dataView(entry.research)}<p id="research-warning" class="field-hint">${escape(reason)}</p>
     <div class="research-step"><h3><span>02</span> Scegli la formazione</h3><p class="field-hint">DeepSeek usa i dati salvati, senza nuove ricerche. <a href="#regole/${encodeURIComponent(team.id)}">Modifica regole</a></p><button id="ai-analyze" class="button button-outline" ${pending || !fireworksReady() || reason ? 'disabled' : ''}>${busy && pending.kind === 'analysis' ? 'Analisi in corso…' : 'Suggerisci formazione'}</button></div>
-    <div class="ai-actions">${busy ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}<button id="ai-configure" class="button button-quiet">Impostazioni AI</button></div>
-    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() || !tavilyReady() ? (HOSTED_API ? 'Configura e verifica i servizi nelle impostazioni AI.' : 'Aggiungi le chiavi Fireworks e Tavily per aggiornare i dati.') : !understatURL ? 'Collega il servizio Understat nelle impostazioni AI.' : entry.notice || '')}</p>
+    <div class="ai-actions">${busy ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}</div>
+    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() || !tavilyReady() ? (HOSTED_API ? 'Servizi AI non disponibili. Verifica la configurazione su Vercel.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
     ${entry.error ? `<p class="import-error" role="alert">${escape(entry.error)}</p>` : ''}
     ${entry.result ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">${escape(entry.date)} · ${escape(entry.analyzedMatchday || 'Prossima giornata')} · Da verificare prima della consegna.</p>${entry.fingerprint !== fingerprint(team) || entry.researchAt !== entry.research?.createdAt || entry.analyzedMatchday !== entry.matchday || reason ? '<p class="import-error">Questa proposta è superata. Generane una nuova con dati aggiornati.</p>' : ''}<div class="ai-result-text">${escape(entry.result.text)}</div><p class="field-hint">I riferimenti [S…] corrispondono alle fonti nei dati raccolti. La rosa non è stata modificata.</p></section>` : ''}</section>`;
-  host.querySelector('#ai-configure').onclick = () => document.querySelector('#ai-settings-open').click();
   host.querySelector('#ai-matchday').oninput = event => {
     entry.matchday = event.target.value;
     const reason = staleReason(entry.research,team,entry.matchday);

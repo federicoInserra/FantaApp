@@ -1,8 +1,4 @@
 const status = document.querySelector('#offline-status');
-const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-document.querySelector('#install-help').hidden = Boolean(standalone);
-document.querySelector('#install-help').addEventListener('click', () => document.querySelector('#install-dialog').showModal());
-
 async function prepareOffline() {
   if (!('serviceWorker' in navigator)) {
     status.textContent = 'Accesso offline non supportato.';

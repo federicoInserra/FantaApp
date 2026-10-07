@@ -41,7 +41,7 @@ python3 scripts/import-player-lists.py /percorso/fantamaster_list.xlsx /percorso
 
 ## Ricerca e formazione AI
 
-In Vercel → Environment Variables configura `FIREWORKS_API_KEY` e `TAVILY_API_KEY` per Production e ridistribuisci. Le chiavi restano sul server. **Impostazioni AI → Verifica servizi AI** controlla la presenza delle chiavi, senza consumare credito e senza verificarne la validità.
+In Vercel → Environment Variables configura `FIREWORKS_API_KEY` e `TAVILY_API_KEY` per Production e ridistribuisci. Le chiavi restano sul server. All’avvio l’app controlla automaticamente la presenza delle chiavi, senza consumare credito e senza verificarne la validità.
 
 **Aggiorna dati** legge Understat, cerca voti e notizie con Tavily e passa gli estratti a GLM. Le osservazioni devono avere citazioni presenti nei testi; questo controllo non garantisce l’interpretazione corretta. **Suggerisci formazione** passa a DeepSeek rosa, regole e raccolta, senza strumenti web. Le risposte sono proposte da verificare, non modifiche automatiche della squadra.
 
