@@ -11,7 +11,7 @@ async function prepareOffline() {
   try {
     await navigator.serviceWorker.register(new URL('../sw.js', import.meta.url));
     await navigator.serviceWorker.ready;
-    status.textContent = 'Disponibile offline';
+    status.textContent = 'Le squadre richiedono una connessione Internet.';
   } catch {
     status.textContent = 'Offline non pronto. Riapri l’app con Internet.';
   }

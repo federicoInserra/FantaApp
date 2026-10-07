@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { filterCatalog, hasPlayer, rosterPlayer } from '../src/catalog.mjs';
-import { isValidState, readState, writeState, LEGACY_KEY } from '../src/storage.mjs';
+import { isValidState } from '../src/storage.mjs';
 const catalogs = {};
 for (const source of ['fantamaster','leghe']) catalogs[source] = JSON.parse(await readFile(new URL(`../data/${source}.json`, import.meta.url))).players;
 
@@ -28,21 +28,7 @@ test('roster entries retain catalog identity without inventing statistics', () =
   assert.equal(hasPlayer({players:[player]},source),true);
   assert.equal(hasPlayer({players:[]},source),false);
 });
-test('both legacy teams and list-based teams survive JSON persistence', () => {
-  let raw=null;
-  globalThis.localStorage={getItem:key=>raw,setItem:(key,value)=>{assert.equal(key,LEGACY_KEY);raw=value;}};
-  const old={teams:[{id:'old',name:'Originale',formation:'3-4-3',players:[]}],activeTeamId:'old'};
-  writeState(old);assert.deepEqual(readState(()=>{throw Error('must not reset')}),old);
-  const current=structuredClone(old);current.teams[0].listSource='leghe';current.teams[0].players=[rosterPlayer(catalogs.leghe[0])];
-  assert.ok(isValidState(current));writeState(current);assert.deepEqual(readState(()=>null),current);
-  current.teams[0].listSource='unknown';assert.equal(isValidState(current),false);
-});
-
-test('an empty team collection persists without inserting demo data', () => {
-  let raw = null;
-  globalThis.localStorage = { getItem: () => raw, setItem: (key, value) => { raw = value; } };
-  const empty = { teams: [], activeTeamId: null };
-  assert.deepEqual(readState(() => empty), empty);
-  writeState(empty);
-  assert.deepEqual(readState(() => { throw Error('must not reinitialize'); }), empty);
+test('validates real squads and rejects an unknown listone',()=>{
+  const state={teams:[{id:'t',name:'Squadra',listSource:'leghe',formation:'4-3-3',players:[rosterPlayer(catalogs.leghe[0])]}],activeTeamId:'t'};
+  assert.ok(isValidState(state));state.teams[0].listSource='unknown';assert.equal(isValidState(state),false);
 });

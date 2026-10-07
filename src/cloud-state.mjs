@@ -16,13 +16,3 @@ export function cloudState(state) {
   const teams=state.teams.map(t=>({...pick(t,['id','name','listSource','formation','rules','importedFrom']),players:t.players.map(p=>pick(p,['id','name','club','role','form','vote','available','catalogId','source','quotation','mantra','trequartista','outsideList']))}));
   return structuredClone({teams,activeTeamId:teams.some(t=>t.id===state.activeTeamId)?state.activeTeamId:teams[0]?.id??null});
 }
-export function mergeTeams(current,incoming,uuid=()=>crypto.randomUUID()) {
-  const result=cloudState(current), additions=cloudState(incoming);
-  const signature=t=>JSON.stringify({...t,id:undefined});
-  for (const team of additions.teams) {
-    if (result.teams.some(t=>signature(t)===signature(team))) continue;
-    if (result.teams.some(t=>t.id===team.id)) team.id=uuid();
-    result.teams.push(team);
-  }
-  return cloudState(result);
-}

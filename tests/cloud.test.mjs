@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {createTeamStore} from '../server/team-store.mjs';
 import {handleTeams} from '../server/teams-api.mjs';
-import {CloudSync,CLOUD_KEY,BACKUP_KEY} from '../src/cloud-sync.mjs';
-import {cloudState,mergeTeams,EMPTY_STATE} from '../src/cloud-state.mjs';
-import {LEGACY_KEY} from '../src/storage.mjs';
+import {DatabaseTeams} from '../src/cloud-sync.mjs';
+import {createTeam,parseTeamText} from '../src/import-team.mjs';
+import {cloudState,EMPTY_STATE} from '../src/cloud-state.mjs';
 const squad=(name='Atletico')=>({teams:[{id:'team-1',name,listSource:'leghe',formation:'4-3-3',players:[{id:'p1',name:'Barella',club:'Inter',role:'C',form:null,vote:null,available:true}]}],activeTeamId:'team-1'});
 const memory=()=>{const m=new Map();return {getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v)};};
 let id=0;const uuid=()=>`test-mutation-${++id}`;
@@ -39,58 +39,52 @@ test('teams API validates requests, strips unrelated secrets and handles missing
   assert.equal((await handleTeams(new Request('https://fanta.test/api/teams'),{store:{read:()=>{throw new Error('postgres://secret');}}})).status,502);
  }finally{await pg.close();}
 });
-test('first migration is explicit, additive and repeat imports do not duplicate teams',async()=>{
- const {pg,store}=await database();const storage=memory();storage.setItem(LEGACY_KEY,JSON.stringify(squad()));
- const sync=new CloudSync({storage,fetchImpl:transport(store),uuid,delay:100000});
+test('always loads database data and never reads or writes browser team storage',async()=>{
+ const {pg,store}=await database();
+ globalThis.localStorage={getItem(){throw new Error('must not read browser storage');},setItem(){throw new Error('must not write browser storage');}};
  try{
-  assert.equal(await sync.refresh(),false);assert.equal(sync.mode,'import');assert.equal((await store.read()).state.teams.length,0);assert.ok(storage.getItem(BACKUP_KEY));
-  assert.equal(await sync.importLocal(),true);assert.equal(sync.mode,'saved');
-  await sync.importLocal(squad());assert.equal((await store.read()).state.teams.length,1);
-  await sync.importLocal(squad('Changed'));assert.equal((await store.read()).state.teams.length,2);
- }finally{sync.dispose();await pg.close();}
+  await store.write({revision:0,state:squad('Only DB'),mutationId:uuid()});
+  const client=new DatabaseTeams({fetchImpl:transport(store),uuid});
+  assert.equal(await client.load(),true);assert.equal(client.state.teams[0].name,'Only DB');
+  const next=client.state;next.teams[0].name='Updated';await client.save(next);
+  const reopened=new DatabaseTeams({fetchImpl:transport(store),uuid});await reopened.load();assert.equal(reopened.state.teams[0].name,'Updated');
+ }finally{delete globalThis.localStorage;await pg.close();}
 });
-test('offline edits survive reload and older device changes cannot overwrite the cloud',async()=>{
- const {pg,store}=await database();const storage=memory();const fetchImpl=transport(store);
- const first=new CloudSync({storage,fetchImpl,uuid,delay:100000});let restored;
+test('create with listone and pasted/file text, add and remove players persist through fresh DB reads',async()=>{
+ const {pg,store}=await database();const client=new DatabaseTeams({fetchImpl:transport(store),uuid});
  try{
-  await first.refresh();first.save(squad());first.fetchImpl=async()=>{throw new Error('offline');};assert.equal(await first.flush(),false);assert.equal(first.entry.dirty,true);
-  restored=new CloudSync({storage,fetchImpl,uuid,delay:100000});await restored.refresh();assert.equal(restored.mode,'saved');assert.equal((await store.read()).state.teams.length,1);
-  const remote=await store.read();await store.write({revision:remote.revision,state:squad('Newer device'),mutationId:uuid()});
-  restored.save(squad('Offline edit'));await restored.flush();assert.equal(restored.mode,'conflict');assert.equal((await store.read()).state.teams[0].name,'Newer device');
-  await restored.importLocal();assert.equal((await store.read()).state.teams.length,2);
- }finally{first.dispose();restored?.dispose();await pg.close();}
+  await client.load();
+  const team=createTeam({name:'Atletico',listSource:'leghe',imported:parseTeamText('Squadra: Atletico\nP - Maignan (Milan)\nC - Barella (Inter)')},uuid);
+  await client.save({teams:[team],activeTeamId:team.id});
+  let loaded=(await store.read()).state;assert.equal(loaded.teams[0].listSource,'leghe');assert.equal(loaded.teams[0].players.length,2);
+  loaded.teams[0].players.push({id:'new',name:'Lucca',club:'Napoli',role:'A',form:null,vote:null,available:true});await client.save(loaded);
+  loaded=client.state;loaded.teams[0].players=loaded.teams[0].players.filter(p=>p.name!=='Barella');await client.save(loaded);
+  const fresh=new DatabaseTeams({fetchImpl:transport(store),uuid});await fresh.load();assert.deepEqual(fresh.state.teams[0].players.map(p=>p.name),['Maignan','Lucca']);
+ }finally{await pg.close();}
 });
-test('same-browser tabs cannot silently overwrite each other and recovery preserves both drafts',async()=>{
- const {pg,store}=await database();const storage=memory();const fetchImpl=transport(store);
- const a=new CloudSync({storage,fetchImpl,uuid,delay:100000});await a.refresh();
- const b=new CloudSync({storage,fetchImpl,uuid,delay:100000});
+test('offline failures have no fallback or queued writes and require a new database load',async()=>{
+ const {pg,store}=await database(),real=transport(store);const client=new DatabaseTeams({fetchImpl:real,uuid});
  try{
-  a.save(squad('Tab A'));assert.throws(()=>b.save(squad('Tab B')),/altra scheda/);assert.equal(JSON.parse(storage.getItem(CLOUD_KEY)).state.teams[0].name,'Tab A');
-  await b.useCloud();assert.equal(JSON.parse(storage.getItem(BACKUP_KEY)).teams[0].name,'Tab A');
- }finally{a.dispose();b.dispose();await pg.close();}
+  await client.load();client.fetchImpl=async()=>{throw Error('offline');};
+  await assert.rejects(client.save(squad()),/Database non raggiungibile/);assert.equal(client.ready,false);assert.equal(client.current,null);
+  await assert.rejects(client.save(squad()),/Ricarica/);assert.equal((await store.read()).state.teams.length,0);
+  assert.equal(await client.load(),false);assert.equal(client.state.teams.length,0);
+  client.fetchImpl=real;await client.load();assert.equal(client.state.teams.length,0);
+ }finally{await pg.close();}
 });
-test('edits during an in-flight save remain pending until a second successful write',async()=>{
- const {pg,store}=await database();const storage=memory();const real=transport(store);let release;
- const sync=new CloudSync({storage,fetchImpl:real,uuid,delay:100000});
+test('concurrent edits reject stale revisions and reload the latest database version',async()=>{
+ const {pg,store}=await database(),fetchImpl=transport(store);const a=new DatabaseTeams({fetchImpl,uuid}),b=new DatabaseTeams({fetchImpl,uuid});
  try{
-  await sync.refresh();sync.save(squad('First'));
-  sync.fetchImpl=async(url,options)=>{await new Promise(resolve=>release=resolve);return real(url,options);};
-  const saving=sync.flush();sync.save(squad('Second'));release();await saving;assert.equal(sync.entry.dirty,true);assert.equal(sync.state.teams[0].name,'Second');
-  sync.fetchImpl=real;await sync.flush();assert.equal((await store.read()).state.teams[0].name,'Second');assert.equal(sync.entry.dirty,false);
- }finally{sync.dispose();await pg.close();}
+  await a.load();await b.load();await a.save(squad('Newer'));
+  await assert.rejects(b.save(squad('Older')),/altro dispositivo/);assert.equal(b.ready,false);
+  await b.load();assert.equal(b.state.teams[0].name,'Newer');
+ }finally{await pg.close();}
 });
-test('unknown backup fields are excluded, invalid backups rejected and merging preserves originals',()=>{
- const original=squad();assert.equal(cloudState({...original,key:'secret'}).key,undefined);
- assert.throws(()=>cloudState({teams:[null]}));assert.equal(mergeTeams(original,squad(),uuid).teams.length,1);
- const merged=mergeTeams(original,squad('Copy'),uuid);assert.equal(merged.teams.length,2);assert.equal(original.teams.length,1);assert.notEqual(merged.teams[0].id,merged.teams[1].id);
-});
-test('a lost successful response can be retried after reload without duplicating the write',async()=>{
- const {pg,store}=await database(),storage=memory(),real=transport(store);
- const a=new CloudSync({storage,fetchImpl:real,uuid,delay:100000});let b;
+test('lost write response is resolved by reading DB, without recreating a squad',async()=>{
+ const {pg,store}=await database(),real=transport(store);const client=new DatabaseTeams({fetchImpl:real,uuid});
  try{
-  await a.refresh();a.save(squad());
-  a.fetchImpl=async(url,options)=>{await real(url,options);throw new Error('connection lost after commit');};
-  await a.flush();assert.equal(a.entry.dirty,true);assert.equal((await store.read()).revision,1);
-  b=new CloudSync({storage,fetchImpl:real,uuid,delay:100000});await b.refresh();assert.equal(b.entry.dirty,false);assert.equal((await store.read()).revision,1);
- }finally{a.dispose();b?.dispose();await pg.close();}
+  await client.load();client.fetchImpl=async(url,options)=>{await real(url,options);throw Error('lost response');};
+  await assert.rejects(client.save(squad()));assert.equal(client.ready,false);
+  client.fetchImpl=real;await client.load();assert.equal(client.state.teams.length,1);assert.equal(client.current.revision,1);
+ }finally{await pg.close();}
 });
