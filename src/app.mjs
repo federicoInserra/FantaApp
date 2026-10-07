@@ -6,16 +6,8 @@ import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
 import { readState, writeState } from './storage.mjs';
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
-const demoPlayers = [
-  ['P', 'Alessandro Conti', 'Milano', 8.2, 7.5], ['P', 'Luca Moretti', 'Torino', 6.8, 6.9],
-  ['D', 'Davide Ferri', 'Napoli', 8.6, 7.4], ['D', 'Matteo Greco', 'Roma', 7.8, 7.1], ['D', 'Riccardo Serra', 'Bologna', 7.4, 7.2], ['D', 'Andrea Fontana', 'Firenze', 6.9, 6.7], ['D', 'Simone Costa', 'Milano', 6.4, 6.8],
-  ['C', 'Federico Romano', 'Milano', 9.1, 8.0], ['C', 'Pietro Gallo', 'Napoli', 8.4, 7.7], ['C', 'Enrico Villa', 'Roma', 7.9, 7.5], ['C', 'Nicolò Rinaldi', 'Bergamo', 7.3, 7.2], ['C', 'Gabriele Leone', 'Torino', 6.8, 6.9], ['C', 'Tommaso De Luca', 'Lecce', 6.3, 6.7],
-  ['A', 'Leonardo Bianchi', 'Milano', 9.3, 8.2], ['A', 'Filippo Marchetti', 'Napoli', 8.7, 7.9], ['A', 'Edoardo Ricci', 'Roma', 8.0, 7.5], ['A', 'Samuele Bruno', 'Bologna', 7.2, 7.1],
-];
-
 function uid() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`; }
-function sampleTeam() { return { id: uid(), name: 'Atletico Fantasia', formation: '3-4-3', players: demoPlayers.map(([role, name, club, form, vote]) => ({ id: uid(), role, name, club, form, vote, available: true })) }; }
-function initialState() { const team = sampleTeam(); return { teams: [team], activeTeamId: team.id }; }
+function initialState() { return { teams: [], activeTeamId: null }; }
 let state;
 try { state = await readState(initialState); }
 catch (error) {
@@ -24,8 +16,10 @@ catch (error) {
   document.querySelector('.save-indicator').textContent = 'Archivio non disponibile';
   throw error;
 }
-let page = ['panoramica', 'rosa', 'formazione', 'regole', 'notizie'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'panoramica';
+const pages = ['panoramica', 'rosa', 'formazione', 'regole'];
+let page = 'panoramica';
 let roleFilter = 'Tutti';
+let rosterQuery = '';
 const app = document.querySelector('#app');
 
 function save() {
@@ -49,36 +43,36 @@ function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({
 function formatScore(value) { return value == null ? '—' : Number(value).toFixed(1).replace('.', ','); }
 function button(label, action, className = 'button button-primary') { return `<button class="${className}" type="button" data-action="${action}">${label}</button>`; }
 function roleBadge(role) { return `<span class="role-badge role-${role}">${role}</span>`; }
-function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><h1>${title}</h1><p class="heading-description">${description}</p></div>${action}</div>`; }
-function teamPicker() { return `<div class="team-picker"><label for="team-select">SQUADRA ATTIVA · ${activeTeam().listSource ? LISTS[activeTeam().listSource] : activeTeam().importedFrom === 'txt' ? 'Rosa da file TXT' : 'Listone da scegliere'}</label><div class="team-select-row"><select id="team-select" aria-label="Seleziona squadra">${state.teams.map(team => `<option value="${escapeHTML(team.id)}" ${team.id === activeTeam().id ? 'selected' : ''}>${escapeHTML(team.name)}</option>`).join('')}</select>${button('+ Nuova squadra', 'new-team', 'button button-outline')}${state.teams.length > 1 ? button('Elimina squadra', 'remove-team', 'button button-quiet') : ''}</div></div>`; }
-
-function renderOverview(team) {
-  const lineup = suggestLineup(team.players, team.formation);
-  const available = team.players.filter(player => player.available !== false).length;
-  const starting = Object.values(lineup.starters).flat().length;
-  return `${pageHeader('FANTACALCIO / IL TUO SPAZIO', 'La tua rosa.<br><em>La prossima mossa.</em>', 'Ogni giornata, una nuova possibilità. Prepara la tua formazione.', button('Prepara la formazione <span>↗</span>', 'go-formation'))}
-    ${teamPicker()}
-    <div class="hero-grid">
-      <section class="feature-card"><div class="feature-card-top"><span class="feature-icon">✦</span><span class="feature-label">LA TUA SQUADRA</span></div><h2>${escapeHTML(team.name)}</h2><p>Ogni grande giornata comincia da una buona scelta.</p><div class="feature-card-bottom"><span>MODULO ATTUALE <strong>${escapeHTML(team.formation)}</strong></span><span class="decorative-ball" aria-hidden="true"><img src="./icons/pixel-ball.svg" alt="" /></span></div></section>
-      <section class="next-card"><div class="card-heading"><span class="card-icon">▦</span><span>Formazione suggerita</span></div><strong>${starting}<small>/11</small></strong><p>${lineup.complete ? 'Tutti i ruoli sono coperti. La tua formazione è pronta.' : 'Aggiungi giocatori disponibili per completare l’undici.'}</p>${button('Vedi formazione <span>→</span>', 'go-formation', 'text-button')}</section>
-    </div>
-    <div class="section-title-row"><div><p class="eyebrow">A COLPO D’OCCHIO</p><h2>I numeri della rosa</h2></div>${button('Gestisci la rosa <span>→</span>', 'go-roster', 'text-button')}</div>
-    <div class="stat-grid"><div class="stat-card"><span class="stat-icon stat-green">◉</span><span class="stat-label">GIOCATORI IN ROSA</span><strong>${team.players.length}</strong><small>Totale giocatori</small></div><div class="stat-card"><span class="stat-icon stat-orange">✓</span><span class="stat-label">DISPONIBILI</span><strong>${available}</strong><small>Pronti per la formazione</small></div><div class="stat-card"><span class="stat-icon stat-purple">▦</span><span class="stat-label">MODULO SCELTO</span><strong>${escapeHTML(team.formation)}</strong><small>Puoi cambiarlo quando vuoi</small></div></div>
-    <div class="info-banner"><span>ⓘ</span><p><strong>Un ambiente per iniziare.</strong> I listoni contengono i giocatori dei file forniti. La squadra iniziale e le notizie sono esempi. Le statistiche demo già presenti non sono aggiornate. Le tue squadre sono salvate su questo dispositivo.</p></div>`;
+function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><${page === 'panoramica' ? 'h1' : 'h2'}>${title}</${page === 'panoramica' ? 'h1' : 'h2'}><p class="heading-description">${description}</p></div>${action}</div>`; }
+function listLabel(team) { return team.listSource ? LISTS[team.listSource] : 'Listone da scegliere'; }
+function teamContext(team) {
+  return `<a class="back-link" href="#panoramica">← Le mie squadre</a>
+    <div class="team-context"><h1>${escapeHTML(team.name)}</h1><button class="button button-quiet" type="button" data-action="team-options" aria-label="Gestisci ${escapeHTML(team.name)}">Gestisci</button></div>
+    <nav class="team-nav" aria-label="Sezioni della squadra">${[['rosa', 'Rosa'], ['formazione', 'Formazione'], ['regole', 'Regole']].map(([target, label]) => `<a href="#${target}/${encodeURIComponent(team.id)}" ${page === target ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
 }
-
+function renderOverview() {
+  return `${pageHeader('IL TUO FANTACALCIO', 'Le mie squadre', 'Scegli una squadra per aprire la rosa.', state.teams.length ? button('+ Nuova squadra', 'new-team') : '')}
+    ${state.teams.length ? `<div class="teams-grid">${state.teams.map((team, index) => `<a class="team-card" href="#rosa/${encodeURIComponent(team.id)}"><div class="team-card-top"><span class="team-number">${String(index + 1).padStart(2, '0')}</span><span class="eyebrow">${escapeHTML(listLabel(team))}</span></div><h2>${escapeHTML(team.name)}</h2><p>${team.players.length ? `${team.players.length} ${team.players.length === 1 ? 'giocatore' : 'giocatori'}` : 'Rosa da completare'}</p><div class="team-card-bottom"><span class="team-role-counts">${roleOrder.map(role => `<span>${roleBadge(role)} ${team.players.filter(player => player.role === role).length}</span>`).join('')}</span><span aria-hidden="true">↗</span></div></a>`).join('')}</div>` : `<section class="welcome-card"><img src="./icons/pixel-ball.svg" alt="" width="120" height="120"><h2>La prima squadra.<br>Si parte da qui.</h2><p>Scegli un nome e un listone. Puoi importare la rosa o aggiungere i giocatori più tardi.</p>${button('+ Crea la tua squadra', 'new-team')}</section>`}
+    <p class="local-note">Le squadre sono salvate solo su questo dispositivo.</p>`;
+}
+function rosterResults(team) {
+  const query = rosterQuery.trim().toLocaleLowerCase('it');
+  const players = team.players.filter(player => (roleFilter === 'Tutti' || player.role === roleFilter) && `${player.name} ${player.club}`.toLocaleLowerCase('it').includes(query));
+  if (!players.length) return `<div class="empty-state"><h3>Nessun giocatore trovato</h3><p>Prova un altro nome o cambia il filtro.</p>${button('Mostra tutti', 'clear-filters', 'button button-outline')}</div>`;
+  return roleOrder.map(role => {
+    const group = players.filter(player => player.role === role).sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    return group.length ? `<section class="roster-group" aria-label="${ROLES[role]}"><h2>${ROLES[role]} <span>${group.length}</span></h2><ul class="player-list">${group.map(player => `<li><button class="player-row" type="button" data-action="player-details" data-id="${escapeHTML(player.id)}">${roleBadge(role)}<span class="player-identity"><strong>${escapeHTML(player.name)}</strong><small>${escapeHTML(player.club)}</small></span>${player.available === false ? '<span class="absence-tag">Assente</span>' : ''}<span class="row-chevron" aria-hidden="true">›</span></button></li>`).join('')}</ul></section>` : '';
+  }).join('');
+}
 function renderRoster(team) {
-  const players = [...team.players].filter(player => roleFilter === 'Tutti' || player.role === roleFilter).sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.name.localeCompare(b.name, 'it'));
-  return `${pageHeader('GESTIONE SQUADRA', 'La tua rosa', 'Tutti i tuoi giocatori, in un solo posto.', button('+ Aggiungi giocatore', 'new-player'))}${teamPicker()}
-    <div class="content-card"><div class="content-card-top"><div><p class="eyebrow">ELENCO GIOCATORI</p><h2>${team.players.length} giocatori in rosa</h2></div><div class="filter-tabs" role="group" aria-label="Filtra per ruolo">${['Tutti', ...roleOrder].map(role => `<button type="button" data-filter="${role}" class="${roleFilter === role ? 'active' : ''}">${role}</button>`).join('')}</div></div>
-    ${players.length ? `<div class="table-wrap"><table><thead><tr><th>GIOCATORE</th><th>RUOLO</th><th>FORMA DEMO</th><th>MEDIA DEMO</th><th>DISPONIBILITÀ</th><th><span class="sr-only">Azioni</span></th></tr></thead><tbody>${players.map(player => `<tr><td><div class="player-cell"><span class="player-avatar">${escapeHTML(player.name.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHTML(player.name)}</strong><small>${escapeHTML(player.club)}</small></span></div></td><td>${roleBadge(player.role)}</td><td><span class="score">${formatScore(player.form)}</span></td><td>${formatScore(player.vote)}</td><td><button class="availability ${player.available === false ? 'unavailable' : ''}" type="button" data-action="toggle-player" data-id="${escapeHTML(player.id)}" aria-label="Cambia disponibilità di ${escapeHTML(player.name)}"><span></span>${player.available === false ? 'Assente' : 'Disponibile'}</button></td><td><button class="row-action" type="button" data-action="remove-player" data-id="${escapeHTML(player.id)}" aria-label="Rimuovi ${escapeHTML(player.name)}">×</button></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty-state"><span>◉</span><h3>Ancora nessun giocatore qui</h3><p>Aggiungi un giocatore o scegli un altro filtro.</p>${button('+ Aggiungi giocatore', 'new-player')}</div>`}</div>
-    <p class="data-note">“—” indica statistiche non ancora disponibili. I valori demo delle vecchie rose non sono dati reali. I ruoli dei nuovi giocatori provengono dal listone selezionato.</p>`;
+  return `<div class="roster-heading"><div><p>${team.players.length} ${team.players.length === 1 ? 'giocatore' : 'giocatori'}</p><span>${escapeHTML(listLabel(team))}</span></div>${team.players.length ? button('+ Giocatore', 'new-player') : ''}</div>
+    ${team.players.length ? `<div class="roster-toolbar"><label class="sr-only" for="roster-search">Cerca nella rosa</label><input id="roster-search" type="search" placeholder="Cerca nome o club" value="${escapeHTML(rosterQuery)}" autocomplete="off"><div class="filter-tabs" role="group" aria-label="Filtra per ruolo">${['Tutti', ...roleOrder].map(role => `<button type="button" data-filter="${role}" aria-pressed="${roleFilter === role}" aria-label="${role === 'Tutti' ? 'Tutti i ruoli' : ROLES[role]}" class="${roleFilter === role ? 'active' : ''}">${role}</button>`).join('')}</div></div><div id="roster-results">${rosterResults(team)}</div>` : `<section class="empty-roster"><span class="empty-symbol" aria-hidden="true">＋</span><h2>La tua rosa comincia qui</h2><p>La squadra è pronta. Scegli i giocatori dal listone ${escapeHTML(listLabel(team))}.</p>${button('Aggiungi giocatori', 'new-player')}</section>`}`;
 }
 
 function renderFormation(team) {
   const lineup = suggestLineup(team.players, team.formation);
   const count = Object.values(lineup.starters).flat().length;
-  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}${teamPicker()}
+  return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}
     <div id="ai-analysis"></div><div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
     <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
 }
@@ -86,7 +80,7 @@ function renderFormation(team) {
 function renderRules(team) {
   let index = 0;
   const rules = teamRules(team);
-  return `${pageHeader('REGOLAMENTO / PER SQUADRA', 'Le tue regole', 'Modifica ogni regola per questa squadra. Il regolamento salvato viene usato automaticamente dall’analisi AI.')}${teamPicker()}
+  return `${pageHeader('REGOLAMENTO / PER SQUADRA', 'Le tue regole', 'Modifica ogni regola per questa squadra. Il regolamento salvato viene usato automaticamente dall’analisi AI.')}
     <p class="data-note">Le modifiche sono salvate su questo dispositivo. Svuota una regola per escluderla dall’analisi. Le altre squadre mantengono il proprio regolamento.</p>
     <div class="rules-grid">${RULE_GROUPS.map(group => `<section class="content-card compact"><h2>${escapeHTML(group.title)}</h2>${group.rules.map(() => {
       const i = index++;
@@ -102,44 +96,109 @@ app.addEventListener('input', event => {
   document.querySelector('#rules-save-status').textContent = save() ? 'Regolamento salvato per questa squadra.' : 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
 });
 
-function renderNews() {
-  const news = [
-    { category: 'CONSIGLIO DEMO', date: 'ESEMPIO', title: 'La forma recente può aiutare a scegliere', body: 'Confronta la forma e la media voto che hai inserito per valutare i tuoi titolari.' },
-    { category: 'GUIDA DEMO', date: 'ESEMPIO', title: 'Scegli il modulo adatto alla tua rosa', body: 'Nella pagina Formazione puoi provare sei moduli. La proposta tiene conto dei ruoli disponibili.' },
-    { category: 'PROMEMORIA DEMO', date: 'ESEMPIO', title: 'Segna gli assenti prima di schierare la squadra', body: 'Nella rosa puoi cambiare la disponibilità di ogni giocatore con un clic.' },
-  ];
-  return `${pageHeader('SEGNALI DAL CAMPO', 'Notizie & spunti', 'Uno spazio dimostrativo per contenuti e consigli futuri.')}<div class="news-notice"><span>ⓘ</span><div><strong>Contenuti dimostrativi</strong><p>Queste schede sono esempi editoriali. Non riportano notizie sportive aggiornate.</p></div></div><div class="news-grid">${news.map((item, index) => `<article class="news-card"><div class="news-art news-art-${index + 1}"><span>${['✦', '▦', '◉'][index]}</span></div><div class="news-content"><div class="news-meta"><span>${item.category}</span><span>${item.date}</span></div><h2>${item.title}</h2><p>${item.body}</p></div></article>`).join('')}</div>`;
-}
-
 function render() {
   const team = activeTeam();
-  document.querySelector('#breadcrumb').textContent = ({ panoramica: 'Panoramica', rosa: 'La rosa', formazione: 'Formazione', regole: 'Regole', notizie: 'Notizie demo' })[page];
-  document.querySelectorAll('#main-nav a').forEach(link => { const active = link.dataset.page === page; link.classList.toggle('active', active); if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
-  app.innerHTML = `<div class="page-content">${({ panoramica: renderOverview, rosa: renderRoster, formazione: renderFormation, regole: renderRules, notizie: renderNews })[page](team)}</div>`;
+  if (!team && page !== 'panoramica') page = 'panoramica';
+  document.querySelector('#breadcrumb').textContent = page === 'panoramica' ? 'Le mie squadre' : team.name;
+  document.title = `${page === 'panoramica' ? 'Le mie squadre' : team.name} · FantaApp`;
+  app.innerHTML = `<div class="page-content">${page === 'panoramica' ? renderOverview() : teamContext(team) + ({ rosa: renderRoster, formazione: renderFormation, regole: renderRules })[page](team)}</div>`;
   if (page === 'formazione') mountAnalysis(team);
 }
-
-function navigate(target) { page = target; location.hash = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function readRoute() {
+  const [target, encodedId] = location.hash.slice(1).split('/');
+  page = pages.includes(target) ? target : 'panoramica';
+  if (encodedId) {
+    let id;
+    try { id = decodeURIComponent(encodedId); } catch { page = 'panoramica'; }
+    if (state.teams.some(team => team.id === id)) { state.activeTeamId = id; save(); }
+    else page = 'panoramica';
+  }
+  roleFilter = 'Tutti'; rosterQuery = '';
+  render();
+}
+function navigate(target) {
+  const hash = target === 'panoramica' ? '#panoramica' : `#${target}/${encodeURIComponent(activeTeam().id)}`;
+  if (location.hash === hash) { page = target; render(); }
+  else location.hash = hash;
+}
+function showPlayer(id) {
+  const player = activeTeam()?.players.find(item => item.id === id);
+  if (!player) return;
+  document.querySelector('#player-detail-content').innerHTML = `<p class="eyebrow">${ROLES[player.role]}</p><h2 id="player-detail-title">${escapeHTML(player.name)}</h2><p>${escapeHTML(player.club)}</p><div class="player-availability"><span>Disponibilità</span><button type="button" class="button button-outline" data-action="toggle-player" data-id="${escapeHTML(id)}" aria-pressed="${player.available !== false}">${player.available === false ? 'Assente' : 'Disponibile'}</button></div><p class="field-hint">Tocca per cambiare la disponibilità. Gli assenti vengono esclusi dalla formazione.</p><button class="button button-quiet danger-action" type="button" data-action="remove-player" data-id="${escapeHTML(id)}">Rimuovi dalla rosa</button>`;
+  const dialog = document.querySelector('#player-detail-dialog');
+  dialog.dataset.playerId = id;
+  if (!dialog.open) dialog.showModal();
+}
 document.addEventListener('click', event => {
-  const filter = event.target.closest('[data-filter]'); if (filter) { roleFilter = filter.dataset.filter; render(); return; }
+  const filter = event.target.closest('[data-filter]');
+  if (filter) {
+    roleFilter = filter.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach(item => { item.classList.toggle('active', item === filter); item.setAttribute('aria-pressed', String(item === filter)); });
+    document.querySelector('#roster-results').innerHTML = rosterResults(activeTeam());
+    return;
+  }
   const actionElement = event.target.closest('[data-action]'); if (!actionElement) return;
   const { action, id } = actionElement.dataset;
   if (action === 'retry-save') save();
   if (action === 'new-team') { document.querySelector('#team-dialog').showModal(); document.querySelector('#team-name').focus(); }
-  if (action === 'remove-team') { const team = activeTeam(); if (state.teams.length > 1 && confirm(`Eliminare ${team.name} e tutti i suoi giocatori?`)) { state.teams = state.teams.filter(item => item.id !== team.id); state.activeTeamId = state.teams[0].id; save(); render(); } }
+  if (action === 'app-settings') document.querySelector('#app-settings-dialog').showModal();
+  if (action === 'team-options') {
+    document.querySelector('#edit-team-name').value = activeTeam().name;
+    document.querySelector('#team-options-list').textContent = listLabel(activeTeam());
+    document.querySelector('#team-options-dialog').showModal();
+  }
+  if (action === 'remove-team') {
+    const team = activeTeam();
+    if (confirm(`Eliminare ${team.name} e tutti i suoi giocatori?`)) {
+      const previous = structuredClone(state);
+      state.teams = state.teams.filter(item => item.id !== team.id); state.activeTeamId = state.teams[0]?.id ?? null;
+      if (!save()) { state = previous; return; }
+      document.querySelector('#team-options-dialog').close(); navigate('panoramica');
+    }
+  }
   if (action === 'new-player') openCatalog();
   if (action === 'go-formation') navigate('formazione');
   if (action === 'go-roster') navigate('rosa');
-  if (action === 'toggle-player') { const player = activeTeam().players.find(item => item.id === id); if (player) { player.available = player.available === false; save(); render(); } }
-  if (action === 'remove-player') { const team = activeTeam(); const player = team.players.find(item => item.id === id); if (player && confirm(`Rimuovere ${player.name} dalla rosa?`)) { team.players = team.players.filter(item => item.id !== id); save(); render(); } }
+  if (action === 'player-details') showPlayer(id);
+  if (action === 'clear-filters') { roleFilter = 'Tutti'; rosterQuery = ''; render(); document.querySelector('#roster-search')?.focus(); }
+  if (action === 'toggle-player') {
+    const player = activeTeam().players.find(item => item.id === id);
+    if (player) { const previous = player.available; player.available = player.available === false; if (!save()) player.available = previous; render(); showPlayer(id); document.querySelector('#player-detail-content [data-action="toggle-player"]').focus(); }
+  }
+  if (action === 'remove-player') {
+    const team = activeTeam(); const player = team.players.find(item => item.id === id);
+    if (player && confirm(`Rimuovere ${player.name} dalla rosa?`)) {
+      const previous = team.players; team.players = team.players.filter(item => item.id !== id);
+      if (!save()) { team.players = previous; return; }
+      document.querySelector('#player-detail-dialog').close(); render(); app.focus();
+    }
+  }
+});
+app.addEventListener('input', event => {
+  if (event.target.id === 'roster-search') { rosterQuery = event.target.value; document.querySelector('#roster-results').innerHTML = rosterResults(activeTeam()); }
+});
+document.querySelector('#team-options-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.querySelector('#edit-team-name');
+  if (!input.value.trim()) { input.setCustomValidity('Inserisci un nome.'); input.reportValidity(); return; }
+  const team = activeTeam(); const previous = team.name; team.name = input.value.trim();
+  if (!save()) { team.name = previous; return; }
+  document.querySelector('#team-options-dialog').close(); render();
+});
+document.querySelector('#edit-team-name').addEventListener('input', event => event.target.setCustomValidity(''));
+document.querySelector('#player-detail-dialog').addEventListener('close', event => {
+  const row = [...document.querySelectorAll('[data-action="player-details"]')].find(item => item.dataset.id === event.target.dataset.playerId);
+  (row ?? app).focus({ preventScroll: true });
+});
+document.querySelector('#player-dialog').addEventListener('close', () => {
+  (document.querySelector('[data-action="new-player"]') ?? app).focus({ preventScroll: true });
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
-document.querySelector('#menu-toggle').addEventListener('click', () => { const sidebar = document.querySelector('.sidebar'); const open = sidebar.classList.toggle('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', String(open)); });
-window.addEventListener('hashchange', () => { const target = location.hash.slice(1); if (['panoramica', 'rosa', 'formazione', 'regole', 'notizie'].includes(target) && target !== page) { page = target; render(); document.querySelector('.sidebar').classList.remove('open'); document.querySelector('#menu-toggle').setAttribute('aria-expanded', 'false'); } });
+window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
 setupAnalysis();
-save(); render();
+save(); readRoute();
 
 let catalogPlayers = [];
 let catalogTeamId;
@@ -191,7 +250,8 @@ document.querySelector('#catalog-results').addEventListener('click', event => {
   const player = catalogPlayers.find(item => item.id === button.dataset.catalogId);
   if (!team || !player || hasPlayer(team, player)) return;
   team.players.push(rosterPlayer(player));
-  save(); render(); renderCatalog();
+  if (!save()) { team.players.pop(); document.querySelector('#catalog-count').textContent = 'Salvataggio non riuscito. Il giocatore non è stato aggiunto. Riprova.'; return; }
+  render(); renderCatalog();
 });
 document.querySelector('#list-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -224,9 +284,10 @@ function resetImport(clearText = true) {
   createButton.disabled = false;
 }
 document.querySelector('#team-import-toggle').addEventListener('click', () => {
-  document.querySelector('#team-import-fields').hidden = false;
-  document.querySelector('#team-import-toggle').setAttribute('aria-expanded', 'true');
-  importText.focus();
+  const fields = document.querySelector('#team-import-fields');
+  fields.hidden = !fields.hidden;
+  document.querySelector('#team-import-toggle').setAttribute('aria-expanded', String(!fields.hidden));
+  if (!fields.hidden) importText.focus();
 });
 document.querySelector('#import-clear').addEventListener('click', () => resetImport());
 async function previewImport() {

@@ -37,3 +37,12 @@ test('both legacy teams and list-based teams survive JSON persistence', () => {
   assert.ok(isValidState(current));writeState(current);assert.deepEqual(readState(()=>null),current);
   current.teams[0].listSource='unknown';assert.equal(isValidState(current),false);
 });
+
+test('an empty team collection persists without inserting demo data', () => {
+  let raw = null;
+  globalThis.localStorage = { getItem: () => raw, setItem: (key, value) => { raw = value; } };
+  const empty = { teams: [], activeTeamId: null };
+  assert.deepEqual(readState(() => empty), empty);
+  writeState(empty);
+  assert.deepEqual(readState(() => { throw Error('must not reinitialize'); }), empty);
+});

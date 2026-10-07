@@ -95,3 +95,10 @@ Il campo di testo aggiorna automaticamente l’anteprima. Caricare un file sosti
 La voce **Regole** mostra il regolamento della squadra attiva. Tutte le 18 regole del documento fornito sono precompilate, suddivise in configurazione, modificatore difesa, punteggio, principio di formazione e formato delle formazioni. Ogni campo è modificabile e viene salvato automaticamente nel localStorage della squadra. Svuotare un campo esclude quella regola dal prompt AI. Le squadre esistenti mostrano gli stessi valori predefiniti fino alla prima modifica; le nuove squadre ricevono copie indipendenti.
 
 L’analisi AI usa automaticamente il regolamento salvato e segnala una raccomandazione precedente come superata quando cambiano regole o rosa. Il selettore locale include gli otto moduli del regolamento iniziale; le modifiche testuali alle regole guidano l’AI, senza costituire vincoli automatici sul selettore manuale, sulla dimensione della rosa o sul calcolo dei punteggi demo. Le nuove squadre partono dal 4-3-3; quelle esistenti conservano il modulo scelto.
+
+
+### Navigazione mobile
+
+La home mostra le squadre salvate. Ogni scheda apre direttamente la rosa; Formazione e Regole sono sezioni interne della squadra. I link includono l’ID della squadra per mantenere il contesto usando Indietro o ricaricando. Gli archivi esistenti sono conservati; una nuova installazione parte senza squadre demo.
+
+La creazione richiede nome e listone, con importazione TXT/testo facoltativa. La rosa è suddivisa per ruolo, con ricerca per nome/club e filtri. Toccare un giocatore apre disponibilità e rimozione. “Gestisci” permette di rinominare o eliminare la squadra, anche l’ultima. Le impostazioni AI e l’installazione sono nel menu Impostazioni.

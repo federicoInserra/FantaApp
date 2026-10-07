@@ -2,7 +2,7 @@ import { validRules } from './rules.mjs';
 export const LEGACY_KEY = 'fantaapp.demo.v1';
 
 export function isValidState(value) {
-  return Boolean(value && Array.isArray(value.teams) && value.teams.length &&
+  return Boolean(value && Array.isArray(value.teams) &&
     (value.importedImports === undefined || (Array.isArray(value.importedImports) && value.importedImports.every(key => typeof key === 'string'))) &&
     value.teams.every(team => typeof team.id === 'string' && typeof team.name === 'string' &&
       (team.listSource === undefined || ['fantamaster', 'leghe'].includes(team.listSource)) &&
