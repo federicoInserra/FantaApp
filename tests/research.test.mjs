@@ -1,6 +1,7 @@
+import {storedResearch} from '../src/analysis-state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { researchSquad, squadSignature, staleReason, validateExtraction, saveResearch, loadResearch } from '../src/research.mjs';
+import { researchSquad, squadSignature, staleReason, validateExtraction } from '../src/research.mjs';
 import {rawLeague,now} from './fixtures/understat.mjs';
 const team={id:'one',listSource:'leghe',players:[{id:'p',name:'Player',club:'Inter',role:'A'}]};
 const source={id:'S1',url:'https://example.com',text:'Player has played 600 minutes this season.'};
@@ -26,8 +27,8 @@ test('direct pipeline uses only the two free relays and preserves validated reco
  };
  const data=await researchSquad({team:squad,fetchImpl,now,understatURL:'https://relay.example'});
  assert.equal(calls,2);assert.equal(data.credits,0);assert.ok(data.players[0].observations.some(o=>o.field==='fantamedia'&&o.value==='5.8'));
- const map=new Map(),storage={setItem:(k,v)=>map.set(k,v),getItem:k=>map.get(k)};
- saveResearch(squad.id,data,storage);assert.equal(loadResearch(squad.id,storage).players[0].observations.length,data.players[0].observations.length);
+ data.id='research-1';data.completedAt=now.toISOString();
+ const saved=storedResearch(data);assert.equal(storedResearch(JSON.parse(JSON.stringify(saved))).players[0].observations.length,data.players[0].observations.length);
  await assert.rejects(researchSquad({team:squad,understatURL:'https://relay.example',fetchImpl:async()=>({ok:false,status:502})}),/Understat/);
- assert.equal(loadResearch(squad.id,storage).createdAt,data.createdAt);
+ assert.equal(saved.createdAt,data.createdAt);
 });

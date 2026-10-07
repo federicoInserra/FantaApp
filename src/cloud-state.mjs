@@ -1,3 +1,4 @@
+import {storedResearch,storedRecommendation} from './analysis-state.mjs';
 import { isValidState } from './storage.mjs';
 export const EMPTY_STATE = {teams:[],activeTeamId:null};
 export function validCloudState(state) {
@@ -13,6 +14,8 @@ export function validCloudState(state) {
 export function cloudState(state) {
   if (!validCloudState(state)) throw new Error('Archivio non valido: controlla squadre e giocatori.');
   const pick=(obj,keys)=>Object.fromEntries(keys.filter(k=>obj[k]!==undefined).map(k=>[k,obj[k]]));
-  const teams=state.teams.map(t=>({...pick(t,['id','name','listSource','formation','rules','importedFrom']),players:t.players.map(p=>pick(p,['id','name','club','role','form','vote','available','catalogId','source','quotation','mantra','trequartista','outsideList']))}));
-  return structuredClone({teams,activeTeamId:teams.some(t=>t.id===state.activeTeamId)?state.activeTeamId:teams[0]?.id??null});
+  const teams=state.teams.map(t=>({...pick(t,['id','name','listSource','formation','rules','importedFrom']),...(t.research?{research:storedResearch(t.research)}:{}),...(t.recommendation?{recommendation:storedRecommendation(t.recommendation)}:{}),players:t.players.map(p=>pick(p,['id','name','club','role','form','vote','available','catalogId','source','quotation','mantra','trequartista','outsideList']))}));
+  const result=structuredClone({teams,activeTeamId:teams.some(t=>t.id===state.activeTeamId)?state.activeTeamId:teams[0]?.id??null});
+  if(new TextEncoder().encode(JSON.stringify(result)).length>3000000)throw new Error('Archivio troppo grande per essere salvato.');
+  return result;
 }

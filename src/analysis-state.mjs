@@ -1,0 +1,56 @@
+import {teamRules} from './rules.mjs';
+import {validateExtraction} from './research.mjs';
+import {validUnderstatSnapshot} from './understat.mjs';
+const pick=(o,keys)=>Object.fromEntries(keys.filter(k=>o?.[k]!==undefined).map(k=>[k,o[k]]));
+const text=(v,max)=>typeof v==='string'&&v.length<=max;
+const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)&&Number.isFinite(Date.parse(v));
+const fail=()=>{throw new Error('Risultati della ricerca o della formazione non validi.');};
+const url=v=>{try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
+const list=(v,max)=>Array.isArray(v)&&v.length<=max;
+export function analysisFingerprint(team){return JSON.stringify([team.name,team.listSource,teamRules(team),team.players.map(p=>[p.id,p.name,p.club,p.role,p.available])]);}
+function sourceMetadata(source){
+  if(!text(source?.id,30)||!source.id||!url(source.url)||!text(source.url,1000)||!text(source.title,250))fail();
+  return pick(source,['id','url','title']);
+}
+function compactUnderstat(data){
+  if(!validUnderstatSnapshot(data))fail();
+  const result=pick(data,['version','provider','league','season','retrievedAt','latestMatchAt','sourceUrl']);
+  const summary=o=>pick(o,['games','xg','xga','xgPerMatch','xgaPerMatch']);
+  result.players=data.players.map(p=>({...pick(p,['rosterId','name','teamId','reason']),player:p.player?pick(p.player,['id','name','clubs','teamIds','games','minutes','xg','npxg','xa','shots','xgPer90','npxgPer90','xaPer90']):null}));
+  result.teams=data.teams.map(t=>({...pick(t,['id','name','lastMatchAt']),overall:summary(t.overall),home:summary(t.home),away:summary(t.away)}));
+  result.fixtures=data.fixtures.map(f=>pick(f,['id','homeId','awayId','kickoff','completed']));
+  return result;
+}
+export function storedResearch(data){
+  if(data?.version!==2||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.completedAt)||!text(data.signature,25000)||!text(data.matchday,120)||!list(data.players,40)||!list(data.sources,150)||!list(data.warnings,200)||!data.warnings.every(w=>text(w,2000)))fail();
+  const sources=data.sources.map(s=>{if(!text(s.text,50000)||!date(s.retrievedAt))fail();return {...sourceMetadata(s),text:s.text,retrievedAt:s.retrievedAt};});
+  if(new Set(sources.map(s=>s.id)).size!==sources.length)fail();
+  if(!data.players.every(p=>text(p.id,150)&&text(p.name,200)&&text(p.club,150)&&list(p.observations,40)))fail();
+  if(new Set(data.players.map(p=>p.id)).size!==data.players.length)fail();
+  const players=validateExtraction(data,data.players,sources);
+  // Reject invalid evidence rather than silently presenting a changed saved result.
+  if(players.some((p,i)=>p.observations.length!==data.players[i].observations.length))fail();
+  const result={...pick(data,['version','id','createdAt','completedAt','signature','matchday']),understat:compactUnderstat(data.understat),players,sources,warnings:[...data.warnings],credits:0};
+  if(JSON.stringify(result).length>250000)throw new Error('La ricerca è troppo grande per essere salvata.');
+  return structuredClone(result);
+}
+export function storedRecommendation(data){
+  if(data?.version!==1||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
+  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),sources:data.sources.map(sourceMetadata)});
+}
+export function recommendationIsStale(recommendation,team,research,matchday){
+  return !research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;
+}
+// Update only this team's latest result; existing recommendation stays visible after new research.
+export function withAnalysisResult(state,teamId,kind,result,expectedFingerprint){
+  const next=structuredClone(state),team=next.teams.find(t=>t.id===teamId);
+  if(!team)throw new Error('La squadra non esiste più. Il risultato non è stato salvato.');
+  if(analysisFingerprint(team)!==expectedFingerprint)throw new Error('La rosa o le regole sono cambiate durante la richiesta. Ripeti la ricerca o l’analisi.');
+  if(kind==='research')team.research=storedResearch(result);
+  else if(kind==='recommendation'){
+    const recommendation=storedRecommendation(result);
+    if(recommendation.researchId!==team.research?.id)throw new Error('I dati della ricerca sono cambiati. Ripeti l’analisi.');
+    team.recommendation=recommendation;
+  }else fail();
+  return next;
+}

@@ -1,3 +1,4 @@
+import {withAnalysisResult} from './analysis-state.mjs';
 import { DatabaseTeams } from './cloud-sync.mjs';
 import { RULE_GROUPS, teamRules } from './rules.mjs';
 import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
@@ -201,7 +202,17 @@ document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEve
 
 app.addEventListener('change', async event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; await save(); render(); } });
 window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
-setupAnalysis();
+setupAnalysis({saveResult:async(teamId,kind,result,expectedFingerprint)=>{
+  const next=withAnalysisResult(state,teamId,kind,result,expectedFingerprint);
+  if(cloud.busy||!cloud.ready)throw new Error('Database occupato o non disponibile. Ricarica le squadre.');
+  state=next;
+  if(!await save()){
+    render();
+    throw new Error('Salvataggio non confermato. Ricarica le squadre per verificare il risultato nel database.');
+  }
+  const saved=state.teams.find(t=>t.id===teamId);
+  return structuredClone(saved);
+}});
 readRoute();
 setupCloudControls();
 

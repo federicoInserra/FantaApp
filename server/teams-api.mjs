@@ -10,7 +10,7 @@ export async function handleTeams(request,{store,env=process.env}={}) {
     if (!request.headers.get('content-type')?.startsWith('application/json')) return json({error:'content_type'},415);
     try {
       const reader=request.body.getReader(); const chunks=[];let size=0;
-      try { while(true) {const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1000000)throw new Error('size');chunks.push(Buffer.from(value));} }
+      try { while(true) {const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>3000000)throw new Error('size');chunks.push(Buffer.from(value));} }
       finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
       payload=JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!Number.isSafeInteger(payload.revision) || payload.revision<0 || typeof payload.mutationId!=='string' || !/^[a-zA-Z0-9-]{10,100}$/.test(payload.mutationId)) throw new Error('payload');

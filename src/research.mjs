@@ -2,7 +2,6 @@ import {fetchPrimary, primaryObservations, STAT_FIELDS} from './primary-research
 import { fetchUnderstat, understatSnapshot, validUnderstatSnapshot } from './understat.mjs';
 export const TAVILY_KEY_STORAGE = 'fantaapp.tavily.key.v1';
 export const RESEARCH_MODEL = 'accounts/fireworks/models/glm-5p3-flash';
-const CACHE_PREFIX = 'fantaapp.research.v1.';
 export const FIELDS = { ...STAT_FIELDS, club: 'Club verificato', opponent: 'Avversario', kickoff: 'Data e ora partita', venue: 'Casa / trasferta', availability: 'Disponibilità', starting: 'Probabile titolarità', minutes: 'Minuti', xg: 'xG', xa: 'xA', shots: 'Tiri', vote: 'Media voto', rated: 'Presenze a voto', set_pieces: 'Piazzati' };
 export const PRIMARY_URLS = ['https://www.legaseriea.it/serie-a/calendario-risultati', 'https://www.fantacalcio.it/probabili-formazioni-serie-a', 'https://www.fantacalcio.it/statistiche-serie-a'];
 export function squadSignature(team) { return JSON.stringify(team.players.map(({ id, name, club, role }) => [id, name, club, role]).sort((a,b) => a[0].localeCompare(b[0]))); }
@@ -16,19 +15,6 @@ export function staleReason(data, team, matchday = '', now = Date.now()) {
   if (!data.understat || data.understat.provider !== 'Understat') return 'Mancano i dati Understat. Aggiorna la raccolta.';
   if (!data.players?.some(player => player.observations?.length) && !data.understat.players?.some(p => p.player)) return 'Nessun dato utilizzabile. Riprova la ricerca.';
   return '';
-}
-export function saveResearch(teamId, data, storage = localStorage) { storage.setItem(CACHE_PREFIX + teamId, JSON.stringify(data)); }
-export function loadResearch(teamId, storage = localStorage) {
-  try {
-    const data = JSON.parse(storage.getItem(CACHE_PREFIX + teamId));
-    if (data?.version !== 2 || !Array.isArray(data.sources) || !Array.isArray(data.players) || typeof data.matchday !== 'string') return null;
-    if (!data.sources.every(s => safeURL(s.url) && typeof s.text === 'string' && typeof s.id === 'string')) return null;
-    if (!data.players.every(p => typeof p.id === 'string' && Array.isArray(p.observations) && Array.isArray(p.missing))) return null;
-    if (!Array.isArray(data.warnings) || !data.warnings.every(w => typeof w === 'string')) return null;
-    if (data.understat && !validUnderstatSnapshot(data.understat)) return null;
-    data.players = validateExtraction(data, data.players, data.sources);
-    return data;
-  } catch { return null; }
 }
 function safeURL(value) { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch { return null; } }
 function normalized(value) { return String(value).replace(/\s+/g, ' ').trim(); }

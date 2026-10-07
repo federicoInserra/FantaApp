@@ -47,7 +47,7 @@ In Vercel → Environment Variables configura `FIREWORKS_API_KEY` per Production
 
 Il parser verifica stagione, intestazioni, identità/club e ambiguità. Le medie di chi ha zero presenze a voto restano mancanti, non zero. Le previsioni sono usate solo se aggiornate negli ultimi due giorni di calendario, per la giornata richiesta (numero o vuoto), e se il confronto delle squadre casa/trasferta trova una sola partita futura in Understat. Le percentuali editoriali indicano titolarità, non probabilità di prendere voto. L’assenza dall’elenco infortunati non prova la disponibilità. Piazzati e notizie aggiuntive restano da verificare.
 
-Il relay `/api/fantacalcio` scarica solo due URL fissi, non inoltra credenziali, limita dimensione e timeout e conserva una cache server di cinque minuti. Se una fonte cambia struttura il parser segnala dati mancanti; non attiva ricerche a pagamento. Le raccolte, separate dalle squadre nel DB, restano sul dispositivo per sei ore. I risultati del vecchio flusso devono essere aggiornati.
+Il relay `/api/fantacalcio` scarica solo due URL fissi, non inoltra credenziali, limita dimensione e timeout e conserva una cache server di cinque minuti. Se una fonte cambia struttura il parser segnala dati mancanti; non attiva ricerche a pagamento. Ogni squadra conserva nel database un solo oggetto `research` e un solo oggetto `recommendation`, nello stesso record `fantaapp_workspace` delle squadre. Ogni esecuzione riuscita sostituisce il risultato precedente dopo la conferma del server; non viene mantenuta una cronologia. I timestamp di ricerca completata e proposta sono visibili e condivisi fra dispositivi. La ricerca resta consultabile dopo sei ore, ma deve essere aggiornata prima di una nuova analisi. Una nuova ricerca rende superata la proposta precedente, che resta leggibile con le sue fonti finché non viene rigenerata. Anche modifiche a rosa, regole o giornata rendono superata la proposta. Nessuna ricerca o proposta viene letta o scritta nel localStorage; i risultati del vecchio flusso locale devono essere rigenerati.
 
 Test live senza chiavi o crediti: `node scripts/research-free-smoke.mjs /percorso/rosa.txt`. Il report diagnostico finisce in `research-results/free-research.json` (escluso da Git). Eseguire manualmente: i test automatici usano estratti HTML locali con casi di regressione.
 
@@ -70,7 +70,7 @@ VERCEL=1 npm run build
 PORT=8013 node scripts/serve-understat.mjs --demo-db
 ```
 
-La preview usa un database Postgres temporaneo tramite PGlite e non scrive su Neon. Senza `--demo-db`, il server usa la connessione database configurata nell’ambiente. I test coprono creazione/importazione, modifiche della rosa, conflitti e fallimenti senza credenziali reali.
+La preview usa un database Postgres temporaneo tramite PGlite e non scrive su Neon. Senza `--demo-db`, il server usa la connessione database configurata nell’ambiente. I test coprono creazione/importazione, modifiche della rosa, risultati e timestamp condivisi tra dispositivi, sostituzione dei risultati senza cronologia, conflitti e fallimenti senza credenziali reali. Per verificare la UI della proposta senza costi si usa un testo dimostrativo esplicito nel solo database locale di test.
 
 Vercel usa `vercel.json`, Node 22, `npm test && npm run build` e output `dist`. Il build copia solo asset pubblici; `.env*`, report e codice server non entrano nel bundle statico. Dopo un aggiornamento chiudi tutte le schede e finestre installate dell’app per attivare il nuovo service worker.
 

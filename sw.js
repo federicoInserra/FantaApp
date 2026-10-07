@@ -1,9 +1,9 @@
 // Bump the version whenever an app-shell asset changes.
 const CACHE_PREFIX = `fantaapp-${self.registration.scope}-`;
-const CACHE = `${CACHE_PREFIX}v24`;
+const CACHE = `${CACHE_PREFIX}v25`;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
-  './data/fantamaster.json', './data/leghe.json', './src/catalog.mjs', './src/storage.mjs', './src/cloud-sync.mjs', './src/cloud-state.mjs', './src/import-team.mjs', './src/app.mjs', './src/rules.mjs', './src/analysis.mjs', './src/ai-api.mjs', './src/research.mjs', './src/primary-research.mjs', './src/understat.mjs', './src/deployment.mjs', './src/analysis-ui.mjs', './src/lineup.mjs', './src/pwa.mjs',
+  './data/fantamaster.json', './data/leghe.json', './src/catalog.mjs', './src/storage.mjs', './src/cloud-sync.mjs', './src/cloud-state.mjs', './src/import-team.mjs', './src/app.mjs', './src/rules.mjs', './src/analysis.mjs', './src/analysis-state.mjs', './src/ai-api.mjs', './src/research.mjs', './src/primary-research.mjs', './src/understat.mjs', './src/deployment.mjs', './src/analysis-ui.mjs', './src/lineup.mjs', './src/pwa.mjs',
   './fonts/doto-800.ttf', './icons/pixel-ball.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png',
 ];
 self.addEventListener('install', event => {
