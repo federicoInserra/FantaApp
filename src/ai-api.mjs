@@ -22,7 +22,15 @@ export async function postJSON(url, key, body, { signal, fetchImpl = fetch, prov
   try { return await response.json(); } catch { throw new Error(`${provider}: risposta non leggibile.`); }
 }
 export function responseText(data) {
-  if (data?.status !== 'completed') throw new Error('Analisi non completata. I risultati parziali non sono stati applicati.');
+  if (data?.status !== 'completed') {
+    const reason = data?.incomplete_details?.reason;
+    const detail = reason === 'max_output_tokens' ? 'DeepSeek ha raggiunto il limite di token della risposta.'
+      : reason === 'content_filter' ? 'Il provider ha interrotto la risposta per il filtro dei contenuti.'
+      : reason === 'max_tool_calls' ? 'Il provider ha raggiunto il limite di chiamate agli strumenti.'
+      : data?.status === 'failed' ? 'Il provider ha segnalato un errore.'
+      : 'Il provider ha interrotto la risposta senza indicare il motivo.';
+    throw new Error(`Analisi non completata. ${detail} I risultati parziali non sono stati applicati.`);
+  }
   const text = (data.output ?? []).filter(item => item.type === 'message' && item.role === 'assistant')
     .flatMap(item => item.content ?? []).filter(part => part.type === 'output_text' && typeof part.text === 'string').map(part => part.text).join('\n');
   if (!text.trim()) throw new Error('Risposta AI vuota.');

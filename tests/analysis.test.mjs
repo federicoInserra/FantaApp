@@ -8,6 +8,7 @@ const complete = { status: 'completed', output: [{ type: 'web_search_call', stat
 test('request requires research and excludes demo statistics', () => {
  const request = buildRequest(team, '8', 'Modificatore difesa');
  assert.equal(request.store, false);
+ assert.equal(request.max_output_tokens, 12000);
  assert.equal(request.tools, undefined);
  const input = JSON.parse(request.input);
  assert.equal(input.rosa[0].disponibile, false);
@@ -19,6 +20,8 @@ test('request requires research and excludes demo statistics', () => {
 test('unresearched and incomplete answers are rejected', () => {
  assert.equal(parseResponse({ ...complete, output: complete.output.slice(1) },research).text,'Consiglio');
  assert.throws(() => parseResponse({ ...complete, status: 'incomplete' }), /non completata/);
+ assert.throws(() => parseResponse({ ...complete, status: 'incomplete', incomplete_details: {reason: 'max_output_tokens'} }), /limite di token/);
+ assert.throws(() => parseResponse({ ...complete, status: 'incomplete', incomplete_details: {reason: 'content_filter'} }), /filtro dei contenuti/);
  assert.equal(parseResponse(complete,research).sources.length, 1);
 });
 test('key goes only in authorization header to fixed Fireworks endpoint', async () => {
