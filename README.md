@@ -21,7 +21,7 @@ Le 18 regole predefinite sono modificabili per squadra e vengono salvate quando 
 
 ## Database e accesso
 
-Collega `fantaapp-db` a Production su Vercel. Il backend legge `DATABASE_URL` o `POSTGRES_URL`; la stringa non deve entrare nel frontend o nel repository. Al primo accesso crea, se assente, `fantaapp_workspace`, senza sostituire dati esistenti. È un unico archivio privato condiviso dai dispositivi e dagli utenti autorizzati al progetto Vercel.
+Collega `fantaapp-db` a Production su Vercel. Il backend legge `DATABASE_URL` o `POSTGRES_URL`, oppure le varianti con prefisso `DB_` generate dall’integrazione Vercel (con fallback alle varianti unpooled); la stringa non deve entrare nel frontend o nel repository. Al primo accesso crea, se assente, `fantaapp_workspace`, senza sostituire dati esistenti. È un unico archivio privato condiviso dai dispositivi e dagli utenti autorizzati al progetto Vercel.
 
 Mantieni **Vercel Authentication → All Deployments**. L’autenticazione è fornita da Vercel; il controllo Origin del codice non la sostituisce. Le Preview devono usare un database separato se vuoi provarvi modifiche.
 

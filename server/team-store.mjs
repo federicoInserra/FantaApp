@@ -23,8 +23,14 @@ export function createTeamStore(sql) {
     }
   };
 }
+export function databaseURL(env) {
+  // Vercel integrations can namespace the generated variables with DB_.
+  const names=['DATABASE_URL','POSTGRES_URL','DB_DATABASE_URL','DB_POSTGRES_URL',
+    'DATABASE_URL_UNPOOLED','POSTGRES_URL_NON_POOLING','DB_DATABASE_URL_UNPOOLED','DB_POSTGRES_URL_NON_POOLING'];
+  return names.map(name=>env[name]).find(value=>typeof value==='string' && value.trim())?.trim() || null;
+}
 export function databaseStore(env=process.env) {
-  const url=env.DATABASE_URL || env.POSTGRES_URL;
+  const url=databaseURL(env);
   if (!url) return null;
   if (connection!==url) {store=createTeamStore((strings,...values)=>neon(url,{fetchOptions:{signal:AbortSignal.timeout(15000)}})(strings,...values));connection=url;}
   return store;

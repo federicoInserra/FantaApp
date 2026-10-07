@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {createTeamStore} from '../server/team-store.mjs';
+import {createTeamStore,databaseURL} from '../server/team-store.mjs';
 import {handleTeams} from '../server/teams-api.mjs';
 import {DatabaseTeams} from '../src/cloud-sync.mjs';
 import {createTeam,parseTeamText} from '../src/import-team.mjs';
@@ -87,4 +87,12 @@ test('lost write response is resolved by reading DB, without recreating a squad'
   await assert.rejects(client.save(squad()));assert.equal(client.ready,false);
   client.fetchImpl=real;await client.load();assert.equal(client.state.teams.length,1);assert.equal(client.current.revision,1);
  }finally{await pg.close();}
+});
+
+test('resolves Vercel DB-prefixed Neon URLs and ignores individual connection fields',()=>{
+ const url='postgresql://test:example@db.example.test/neondb';
+ for(const name of ['DATABASE_URL','POSTGRES_URL','DB_DATABASE_URL','DB_POSTGRES_URL','DB_DATABASE_URL_UNPOOLED','DB_POSTGRES_URL_NON_POOLING'])assert.equal(databaseURL({[name]:url}),url);
+ assert.equal(databaseURL({DATABASE_URL:' ',DB_DATABASE_URL:url}),url);
+ assert.equal(databaseURL({DATABASE_URL:url,DB_DATABASE_URL:'other'}),url);
+ assert.equal(databaseURL({DB_PGHOST:'host',DB_POSTGRES_USER:'user',DB_PGDATABASE:'neondb'}),null);
 });
