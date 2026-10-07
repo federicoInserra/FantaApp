@@ -2,15 +2,26 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
+import {handleTeams} from '../server/teams-api.mjs';
 import {handleAI} from '../server/ai-proxy.mjs';
 import {handleVercelUnderstat} from '../server/vercel-understat.mjs';
+let previewStore;
+if(process.argv.includes('--demo-db')) {
+  const {PGlite}=await import('@electric-sql/pglite');
+  const {createTeamStore}=await import('../server/team-store.mjs');
+  const pg=new PGlite();
+  previewStore=createTeamStore(async(strings,...values)=>{
+    let text=strings[0];values.forEach((value,i)=>{text+=`$${i+1}`+strings[i+1]});return (await pg.query(text,values)).rows;
+  });
+  console.log('Local disposable demo database enabled; Neon is not used.');
+}
 const port=Number(process.env.PORT || 8007),origin=`http://localhost:${port}`,root=resolve('dist');
 const types={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.ttf':'font/ttf','.webmanifest':'application/manifest+json'};
 createServer(async(req,res)=>{
   const url=new URL(req.url,origin);
-  if(['/api/ai','/api/ai-status'].includes(url.pathname)) {
-    const request=new Request(url,{method:req.method,headers:req.headers,...(req.method==='POST'?{body:req,duplex:'half'}:{})});
-    const result=await handleAI(request);
+  if(['/api/ai','/api/ai-status','/api/teams'].includes(url.pathname)) {
+    const request=new Request(url,{method:req.method,headers:req.headers,...(['POST','PUT'].includes(req.method)?{body:req,duplex:'half'}:{})});
+    const result=await (url.pathname==='/api/teams'?handleTeams(request,{store:previewStore}):handleAI(request));
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
   }
   if(url.pathname==='/api/understat'){

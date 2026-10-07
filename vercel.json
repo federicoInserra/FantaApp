@@ -12,6 +12,9 @@
     },
     "api/ai-status.mjs": {
       "maxDuration": 10
+    },
+    "api/teams.mjs": {
+      "maxDuration": 30
     }
   },
   "headers": [

@@ -18,9 +18,10 @@
         <header class="topbar">
           <a class="brand" href="#panoramica" aria-label="FantaApp, le mie squadre">Fanta<span class="brand-light">App</span></a>
           <span id="breadcrumb" class="sr-only">Le mie squadre</span>
-          <div class="topbar-right"><span class="save-indicator">Salvato sul dispositivo</span><button class="button button-outline" type="button" data-action="app-settings" aria-label="Impostazioni app">Impostazioni</button></div>
+          <div class="topbar-right"><span class="save-indicator" role="status">Salvato sul dispositivo</span><button class="button button-outline" type="button" data-action="app-settings" aria-label="Impostazioni app">Impostazioni</button></div>
         </header>
         <div id="storage-error" class="info-banner" role="alert" hidden><p>Le ultime modifiche non sono state salvate. Mantieni aperta l’app.</p><button class="button button-outline" type="button" data-action="retry-save">Riprova</button></div>
+        <div id="cloud-banner" class="info-banner" role="status" hidden><p id="cloud-message"></p><button id="cloud-banner-open" class="button button-outline" type="button">Gestisci salvataggi</button></div>
         <main id="app" tabindex="-1"></main>
       </div>
     </div>
@@ -31,7 +32,16 @@
       <button id="ai-settings-open" class="button button-outline full-width" type="button">Impostazioni AI</button>
       <button id="install-help" class="button button-outline full-width" type="button">Installa su iPhone</button>
       <p id="storage-status" role="status"></p><p id="offline-status" role="status"></p>
-      <p class="field-hint">Le squadre restano in questo browser. Usa sempre lo stesso dispositivo per ritrovarle.</p>
+      <div id="cloud-controls" hidden>
+        <button id="cloud-refresh" class="button button-outline full-width" type="button">Sincronizza squadre</button>
+        <button id="cloud-import-local" class="button button-outline full-width" type="button" hidden>Importa squadre locali nel cloud</button>
+        <button id="cloud-use-remote" class="button button-outline full-width" type="button" hidden>Usa versione cloud (conserva backup locale)</button>
+      </div>
+      <button id="teams-export" class="button button-outline full-width" type="button">Esporta backup squadre</button>
+      <label for="teams-import">Importa backup squadre (.json)</label><input id="teams-import" type="file" accept=".json,application/json">
+      <button id="teams-export-recovery" class="button button-quiet full-width" type="button" hidden>Esporta backup prima della sincronizzazione</button>
+      <p id="teams-transfer-status" role="status"></p>
+      <p id="storage-help" class="field-hint">Le squadre restano in questo browser. Usa sempre lo stesso dispositivo per ritrovarle.</p>
     </dialog>
     <dialog id="team-options-dialog" class="app-dialog" aria-labelledby="team-options-title">
       <form id="team-options-form">

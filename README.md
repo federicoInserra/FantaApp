@@ -129,7 +129,7 @@ Dopo aver pubblicato queste modifiche nel repository:
 2. Per accesso privato, configura Security → Deployment Protection → Vercel Authentication → All Deployments. È disponibile gratuitamente anche per produzione ([annuncio Vercel](https://vercel.com/changelog/protect-production-deployments-for-free-on-every-plan)). Verifica sia la home sia `/api/understat?season=2026` da una finestra non autenticata. Il piano Hobby da solo non rende privata l’app.
 3. Verifica il collegamento Understat nelle impostazioni AI dopo l’accesso. La funzione non richiede chiavi API.
 
-Questa preparazione non configura un database: squadre e regole rimangono nel localStorage. Su Vercel le chiavi provider sono gestite dal backend. Il nuovo dominio ha un archivio browser separato da GitHub Pages; le rose esistenti non migrano automaticamente. Un successivo collegamento a Neon richiederà schema, endpoint protetti, credenziali server e migrazione dei dati locali. Non inserire segreti nel codice frontend o in variabili pubbliche.
+Su Vercel squadre e regole vengono sincronizzate con Neon; una copia locale conserva le modifiche in attesa. Le chiavi provider sono gestite dal backend. Il nuovo dominio ha un archivio browser separato da GitHub Pages; le rose esistenti non migrano automaticamente. La migrazione delle squadre locali richiede l’importazione esplicita descritta sotto. Non inserire segreti nel codice frontend o in variabili pubbliche.
 
 Il workflow GitHub Pages esistente rimane attivo finché non viene esplicitamente disabilitato: la protezione Vercel non protegge il vecchio sito. Il server locale non simula l’autenticazione Vercel; la protezione va verificata sul deployment reale.
 
@@ -145,3 +145,20 @@ Su Vercel, `/api/ai-status` restituisce soltanto due booleani. `/api/ai` inoltra
 Il client su Vercel rimuove le vecchie chiavi dal localStorage di quel dominio, non le carica sul server e usa solo gli endpoint dello stesso dominio con la sessione Vercel. Le eventuali chiavi salvate sul vecchio dominio GitHub Pages sono separate. Il service worker non memorizza risposte API. Il frontend statico continua a supportare chiavi locali.
 
 Per provare senza chiamate a pagamento: `npm test`. Per una preview del flusso ospitato: `VERCEL=1 npm run build`, poi `npm run dev`. Senza variabili ambiente, lo stato deve indicare “da configurare”. Puoi avviare il server con un file env locale ignorato da Git per testare lo stato configurato: le chiavi vengono usate dai provider solo premendo Aggiorna dati o Suggerisci formazione.
+
+
+## Squadre nel cloud (Vercel + Neon)
+
+L’integrazione `fantaapp-db` deve fornire `DATABASE_URL` (oppure `POSTGRES_URL`) al deployment Production. La stringa resta sul server; non inserirla nel frontend. Le Preview devono usare un database separato se vuoi provarvi modifiche. Non serve eseguire SQL manuale: al primo accesso il backend crea, se assente, la tabella `fantaapp_workspace` e una riga iniziale vuota, senza cancellare dati esistenti.
+
+È un singolo archivio privato: tutti gli utenti autorizzati al progetto Vercel condividono le stesse squadre. **Vercel Authentication → All Deployments deve rimanere attiva.** L’API `/api/teams` non implementa account applicativi separati. Le richieste PUT verificano l’origin, validano dimensioni e schema e usano query parametrizzate. Il database conserva solo squadre, listoni, rose, disponibilità, moduli e regole; non chiavi, estratti web o risposte AI.
+
+Il client salva prima una copia locale e invia le modifiche dopo una breve pausa. “Salvato nel cloud” appare soltanto dopo una risposta valida del server. Ogni scrittura richiede la revisione precedente: una modifica da un altro dispositivo produce un conflitto invece di sovrascrivere il cloud. Una richiesta ripetuta dopo una risposta persa è riconosciuta tramite il suo identificatore. Le modifiche offline restano in un archivio locale distinto e vengono ritentate quando torna la rete, al prossimo avvio o tramite **Sincronizza squadre**. Un dispositivo già aperto rilegge i dati cloud tramite quel pulsante; non sostituisce automaticamente un modulo che stai compilando.
+
+Al primo utilizzo, se il browser contiene squadre, scegli **Gestisci salvataggi → Importa squadre locali nel cloud**. L’importazione aggiunge le squadre mancanti, ignora quelle identiche e conserva come copie quelle con lo stesso ID ma contenuti diversi. Puoi anche scegliere la versione cloud, conservando un backup recuperabile delle squadre locali. Le squadre cancellate su un dispositivo possono ricomparire come copie solo se importi esplicitamente una vecchia versione.
+
+Per trasferire squadre dal vecchio dominio GitHub Pages: **Impostazioni → Esporta backup squadre**, poi apri Vercel e usa **Importa backup squadre (.json)**. Il backup contiene soltanto squadre e regole, mai credenziali AI. L’importazione conserva le squadre cloud esistenti. Massimo 1 MB per file, 50 squadre e 100 giocatori per squadra. Non cancellare i dati del browser prima di verificare il salvataggio cloud. Il vecchio archivio locale resta disponibile come backup durante la migrazione.
+
+Il build GitHub Pages continua a salvare localmente e offre export/import JSON. I testi locali delle sezioni precedenti si riferiscono a quel build. Dopo un deployment, chiudi tutte le schede e le finestre installate dell’app per attivare il nuovo service worker.
+
+Verifica: `npm ci && npm test`. I test database eseguono SQL Postgres con PGlite in memoria e coprono conflitti, importazione, retry e recupero offline, senza usare Neon o credenziali reali. Preview manuale con database temporaneo: `VERCEL=1 npm run build`, poi `PORT=8013 node scripts/serve-understat.mjs --demo-db`. Questo database è locale, viene perso alla chiusura del processo e non scrive nel progetto Neon. Il test dell’integrazione Neon reale va fatto sul deployment autenticato.

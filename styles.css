@@ -40,3 +40,6 @@
 .research-observation blockquote { margin: 0; padding: 12px; border-left: 2px solid #999; }
 .forecast-label { font-size: 11px; background: #ffe7b4; padding: 3px 6px; border-radius: 4px; }
 @media (max-width: 600px) { .research-step > button { width: 100%; } }
+
+/* Keep save feedback visible on the mobile layout, including pending/offline states. */
+@media(max-width:600px){.topbar-right{gap:10px}.save-indicator{display:block;max-width:100px;font-size:8px;line-height:1.5;text-align:right}}

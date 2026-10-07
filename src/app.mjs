@@ -1,3 +1,6 @@
+import { HOSTED_API } from './deployment.mjs';
+import { CloudSync, BACKUP_KEY } from './cloud-sync.mjs';
+import { cloudState, mergeTeams } from './cloud-state.mjs';
 import { RULE_GROUPS, teamRules } from './rules.mjs';
 import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
@@ -8,8 +11,23 @@ import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 function uid() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`; }
 function initialState() { return { teams: [], activeTeamId: null }; }
-let state;
-try { state = await readState(initialState); }
+let state, cloud;
+function cloudStatus({mode,message}) {
+  const labels={loading:'Connessione al cloud…',saved:'Salvato nel cloud',saving:'Salvataggio nel cloud…',pending:'Salvato sul dispositivo · in attesa',offline:'Salvato sul dispositivo · cloud non disponibile',conflict:'Conflitto: sincronizzazione sospesa',import:'Squadre locali da importare'};
+  document.querySelector('.save-indicator').textContent=labels[mode];
+  document.querySelector('#storage-status').textContent=message||labels[mode];
+  const needsAction=['offline','conflict','import'].includes(mode);
+  document.querySelector('#cloud-banner').hidden=!needsAction;
+  document.querySelector('#cloud-message').textContent=message||labels[mode];
+  document.querySelector('#cloud-import-local').hidden=!['import','conflict'].includes(mode);
+  document.querySelector('#cloud-import-local').textContent=mode==='conflict'?'Recupera squadre locali come copie':'Importa squadre locali nel cloud';
+  document.querySelector('#cloud-use-remote').hidden=!['import','conflict'].includes(mode);
+  document.querySelectorAll('#cloud-controls button').forEach(b=>b.disabled=['loading','saving'].includes(mode));
+}
+try {
+  if(HOSTED_API){cloud=new CloudSync({storage:localStorage,onStatus:cloudStatus});await cloud.refresh();state=cloud.state;}
+  else state=await readState(initialState);
+}
 catch (error) {
   document.querySelector('#app').textContent = 'Impossibile aprire il archivio locale. Riapri l’app senza cancellare i dati. ' + error.message;
   document.querySelector('#storage-status').textContent = 'Archivio non disponibile: nessun dato è stato sostituito.';
@@ -26,9 +44,9 @@ function save() {
   const status = document.querySelector('#storage-status');
   const indicator = document.querySelector('.save-indicator');
   try {
-    writeState(state);
-    status.textContent = 'Squadre salvate su questo dispositivo.';
-    indicator.textContent = 'Salvato sul dispositivo';
+    if(cloud)cloud.save(state);else writeState(state);
+    if(!cloud) { status.textContent = 'Squadre salvate su questo dispositivo.';
+    indicator.textContent = 'Salvato sul dispositivo'; }
     document.querySelector('#storage-error').hidden = true;
     return true;
   } catch {
@@ -53,7 +71,7 @@ function teamContext(team) {
 function renderOverview() {
   return `${pageHeader('IL TUO FANTACALCIO', 'Le mie squadre', 'Scegli una squadra per aprire la rosa.', state.teams.length ? button('+ Nuova squadra', 'new-team') : '')}
     ${state.teams.length ? `<div class="teams-grid">${state.teams.map((team, index) => `<a class="team-card" href="#rosa/${encodeURIComponent(team.id)}"><div class="team-card-top"><span class="team-number">${String(index + 1).padStart(2, '0')}</span><span class="eyebrow">${escapeHTML(listLabel(team))}</span></div><h2>${escapeHTML(team.name)}</h2><p>${team.players.length ? `${team.players.length} ${team.players.length === 1 ? 'giocatore' : 'giocatori'}` : 'Rosa da completare'}</p><div class="team-card-bottom"><span class="team-role-counts">${roleOrder.map(role => `<span>${roleBadge(role)} ${team.players.filter(player => player.role === role).length}</span>`).join('')}</span><span aria-hidden="true">↗</span></div></a>`).join('')}</div>` : `<section class="welcome-card"><img src="./icons/pixel-ball.svg" alt="" width="120" height="120"><h2>La prima squadra.<br>Si parte da qui.</h2><p>Scegli un nome e un listone. Puoi importare la rosa o aggiungere i giocatori più tardi.</p>${button('+ Crea la tua squadra', 'new-team')}</section>`}
-    <p class="local-note">Le squadre sono salvate solo su questo dispositivo.</p>`;
+    <p class="local-note">${HOSTED_API ? 'Le squadre si sincronizzano nel tuo archivio privato. Controlla lo stato di salvataggio in alto.' : 'Le squadre sono salvate solo su questo dispositivo.'}</p>`;
 }
 function rosterResults(team) {
   const query = rosterQuery.trim().toLocaleLowerCase('it');
@@ -81,7 +99,7 @@ function renderRules(team) {
   let index = 0;
   const rules = teamRules(team);
   return `${pageHeader('REGOLAMENTO / PER SQUADRA', 'Le tue regole', 'Modifica ogni regola per questa squadra. Il regolamento salvato viene usato automaticamente dall’analisi AI.')}
-    <p class="data-note">Le modifiche sono salvate su questo dispositivo. Svuota una regola per escluderla dall’analisi. Le altre squadre mantengono il proprio regolamento.</p>
+    <p class="data-note">${HOSTED_API ? 'Le modifiche vengono salvate nel cloud quando sei online.' : 'Le modifiche sono salvate su questo dispositivo.'} Svuota una regola per escluderla dall’analisi. Le altre squadre mantengono il proprio regolamento.</p>
     <div class="rules-grid">${RULE_GROUPS.map(group => `<section class="content-card compact"><h2>${escapeHTML(group.title)}</h2>${group.rules.map(() => {
       const i = index++;
       return `<label class="rules-label" for="rule-${i}">Regola ${i + 1}</label><textarea id="rule-${i}" data-rule-index="${i}" rows="${rules[i].length > 160 ? 5 : 2}" maxlength="2000">${escapeHTML(rules[i])}</textarea>`;
@@ -93,7 +111,7 @@ app.addEventListener('input', event => {
   const team = activeTeam();
   team.rules = [...teamRules(team)];
   team.rules[Number(index)] = event.target.value;
-  document.querySelector('#rules-save-status').textContent = save() ? 'Regolamento salvato per questa squadra.' : 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
+  document.querySelector('#rules-save-status').textContent = save() ? (HOSTED_API ? 'Regolamento salvato sul dispositivo. Controlla lo stato cloud in alto.' : 'Regolamento salvato per questa squadra.') : 'Salvataggio non riuscito. Mantieni aperta l’app e riprova.';
 });
 
 function render() {
@@ -198,7 +216,8 @@ document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEve
 app.addEventListener('change', event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; save(); render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; save(); render(); } });
 window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
 setupAnalysis();
-save(); readRoute();
+if(!cloud)save(); readRoute();
+setupCloudControls();
 
 let catalogPlayers = [];
 let catalogTeamId;
@@ -359,3 +378,37 @@ teamForm.addEventListener('submit', event => {
     importError.hidden = false;
   }
 });
+
+
+function downloadBackup(value,name='fantaapp-squadre') {
+  const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),state:cloudState(value)},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${name}-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function setupCloudControls() {
+  const feedback=document.querySelector('#teams-transfer-status');
+  document.querySelector('#cloud-controls').hidden=!cloud;
+  if(cloud)document.querySelector('#storage-help').textContent='Archivio privato condiviso tra i tuoi dispositivi. Le modifiche offline restano qui finché la sincronizzazione riesce. In caso di conflitto puoi recuperarle come copie senza sovrascrivere il cloud.';
+  document.querySelector('#cloud-banner-open').onclick=()=>document.querySelector('#app-settings-dialog').showModal();
+  document.querySelector('#teams-export').onclick=()=>downloadBackup(state);
+  const recovery=document.querySelector('#teams-export-recovery');
+  recovery.hidden=!localStorage.getItem(BACKUP_KEY);
+  recovery.onclick=()=>downloadBackup(JSON.parse(localStorage.getItem(BACKUP_KEY)),'fantaapp-recupero');
+  const runCloud=async(operation)=>{
+    const ok=await operation();state=cloud.state;readRoute();recovery.hidden=!localStorage.getItem(BACKUP_KEY);
+    feedback.textContent=ok?'Squadre sincronizzate.':'Sincronizzazione non completata. Controlla lo stato sopra.';
+  };
+  document.querySelector('#cloud-refresh').onclick=()=>runCloud(()=>cloud.refresh());
+  document.querySelector('#cloud-import-local').onclick=()=>runCloud(()=>cloud.importLocal(state));
+  document.querySelector('#cloud-use-remote').onclick=()=>runCloud(()=>cloud.useCloud());
+  document.querySelector('#teams-import').onchange=async(event)=>{
+    const file=event.target.files?.[0];if(!file)return;
+    try {
+      if(file.size>1000000)throw new Error('Il backup supera 1 MB.');
+      const data=JSON.parse(await file.text()),incoming=cloudState(data.state??data);
+      if(cloud)await runCloud(()=>cloud.importLocal(incoming));
+      else {const merged=mergeTeams(state,incoming);writeState(merged);state=merged;readRoute();feedback.textContent='Backup importato. Le squadre esistenti sono state conservate.';}
+    }catch(error){feedback.textContent=error.message||'Backup non valido.';}
+    finally{event.target.value='';}
+  };
+  window.addEventListener('online',()=>{if(cloud?.entry.dirty && !cloud.conflict)void cloud.flush();});
+}
