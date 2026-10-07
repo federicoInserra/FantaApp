@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+research-results
+.wrangler
+.vercel
+dist
+node_modules
+*.log

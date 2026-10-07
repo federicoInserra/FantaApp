@@ -51,13 +51,16 @@
     <dialog id="ai-settings" class="app-dialog">
       <form id="ai-key-form">
         <button class="dialog-close" type="button" data-close-dialog aria-label="Chiudi">×</button>
-        <p class="eyebrow">FIREWORKS AI</p><h2>La tua chiave API</h2>
-        <p class="field-hint">La chiave viene salvata nel localStorage di questo browser e inviata solo a Fireworks per l’analisi. È separata dai dati delle squadre. Gli script di questo sito e delle altre app sullo stesso dominio possono leggerla: usa un dispositivo fidato e una chiave dedicata.</p>
+        <p class="eyebrow">RICERCA E FORMAZIONE</p><h2>Servizi AI</h2>
+        <p class="field-hint">Le chiavi vengono salvate nel localStorage di questo browser e inviate solo al rispettivo servizio. Sono separate dai dati delle squadre. Gli script di questo sito e delle altre app sullo stesso dominio possono leggerle: usa un dispositivo fidato e una chiave dedicata.</p>
         <label for="ai-key">Chiave API Fireworks</label>
-        <input id="ai-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="512" placeholder="Incolla una nuova chiave" required>
+        <input id="ai-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="512" placeholder="Incolla una nuova chiave">
+        <label for="tavily-key">Chiave API Tavily</label><input id="tavily-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="512" placeholder="Incolla una nuova chiave Tavily">
+        <div id="understat-service-config"><label for="understat-url">Servizio Understat</label><input id="understat-url" type="url" autocomplete="off" spellcheck="false" placeholder="https://fantaapp-understat.…workers.dev">
+        <p class="field-hint">Collega il servizio che legge le statistiche Understat. Riceve solo la stagione, senza chiavi API o rosa.</p></div><button id="understat-check" class="button button-outline" type="button">Verifica collegamento</button><p id="understat-status" role="status"></p>
         <p id="ai-key-status" role="status"></p>
-        <div class="ai-actions"><button class="button button-primary" type="submit">Salva chiave</button><button id="ai-key-forget" class="button button-outline" type="button">Dimentica chiave</button></div>
-        <p class="field-hint">Modello: DeepSeek V4.1 Flash. La ricerca web deve essere abilitata sul tuo account Fireworks. L’analisi richiede Internet e utilizza il tuo credito.</p>
+        <div class="ai-actions"><button class="button button-primary" type="submit">Salva impostazioni</button><button id="ai-key-forget" class="button button-outline" type="button">Dimentica Fireworks</button><button id="tavily-key-forget" class="button button-outline" type="button">Dimentica Tavily</button></div>
+        <p class="field-hint">Tavily riceve nomi e club per cercare sul web. Fireworks riceve rosa, regole ed estratti: GLM organizza i dati e DeepSeek suggerisce la formazione. Internet e credito dei servizi sono necessari. Lascia vuoto un campo per conservare la chiave salvata.</p>
       </form>
     </dialog>
     <dialog id="team-dialog" class="app-dialog import-dialog" aria-labelledby="team-dialog-title">

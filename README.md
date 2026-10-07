@@ -74,15 +74,13 @@ Le squadre create nelle versioni precedenti vengono conservate. L’importazione
 
 ## Analisi AI della giornata
 
-Apri **Impostazioni AI**, incolla la tua chiave Fireworks e premi **Salva chiave**. La chiave viene conservata separatamente dalle rose nel localStorage (`fantaapp.fireworks.key.v1`), non viene pubblicata né inclusa nei dati delle squadre. **Dimentica chiave** la rimuove. Il localStorage è leggibile dagli script dello stesso origin, incluse altre app sul medesimo dominio GitHub Pages: usa una chiave dedicata e un dispositivo fidato.
+Apri **Impostazioni AI** e salva le chiavi Fireworks e Tavily. Sono conservate separatamente nel localStorage e inviate solo al rispettivo provider. I campi vuoti conservano le chiavi precedenti; i pulsanti Dimentica le eliminano. Gli script sullo stesso origin possono leggerle: usa chiavi dedicate e un dispositivo fidato.
 
-In **Formazione**, scegli una rosa reale, indica eventualmente la giornata e premi **Analizza la giornata**. L’app chiama direttamente `https://api.fireworks.ai/inference/v1/responses` con `accounts/fireworks/models/deepseek-v4p1-flash`, un prompt predefinito in italiano e lo strumento `web_search`. Il prompt invia nomi, club, ruoli e disponibilità; esclude le statistiche demo. Richiede titolari, panchina, alternative, incertezze e fonti. L’output è un consiglio testuale da verificare: non applica automaticamente la formazione e non costituisce un’ottimizzazione numerica validata.
+Nella formazione, **Aggiorna dati** recupera le pagine Serie A note e cerca statistiche e notizie per la rosa con Tavily. GLM organizza gli estratti e conserva solo osservazioni con citazioni presenti nei testi. Questo controllo non garantisce la correttezza dell’interpretazione: esamina fonti e campi mancanti. Tavily riceve nomi e club; Fireworks riceve rosa, estratti e, per la formazione, regolamento.
 
-La ricerca web deve essere abilitata sull’account Fireworks. Errori di autorizzazione, credito, limiti, rete e risposte incomplete sono mostrati nell’app. Una risposta senza ricerca web completata viene rifiutata. Sono consentite al massimo sei chiamate agli strumenti per risposta e 6.000 token di output, con un timeout locale di tre minuti; annullare non garantisce che Fireworks interrompa l’elaborazione o la fatturazione. Non sono previsti tentativi automatici.
+**Suggerisci formazione** passa i dati a DeepSeek senza strumenti web. La raccolta è salvata per squadra e richiede aggiornamento dopo sei ore o cambiamenti di rosa/giornata. Una ricerca fallita conserva i dati precedenti. Le proposte rimangono in memoria e non modificano la rosa.
 
-Le analisi rimangono in memoria durante la sessione, distinte per squadra; ricaricare la pagina le elimina. Una modifica della rosa segnala il risultato precedente come superato. La richiesta usa `store: false`; si applicano comunque le condizioni di trattamento dati del provider. Internet e credito Fireworks sono necessari; nessun backend o account FantaApp è richiesto. Le fonti strutturate con URL HTTP(S) vengono mostrate come link e tutto il testo del modello viene visualizzato senza eseguire HTML.
-
-Verifica: `node --test tests/*.test.mjs` e `node scripts/build.mjs`. I test API utilizzano risposte simulate; una chiamata reale richiede una chiave e l’abilitazione web search. La cache PWA è aggiornata alla versione 13.
+Budget indicativo per aggiornamento: numero giocatori + un gruppo notizie ogni quattro + estrazione iniziale (circa 33 crediti Tavily per 25 giocatori), oltre ai token Fireworks. Nessun tentativo automatico. Timeout locale: dieci minuti per ricerca e tre per analisi. Annullare non garantisce l’interruzione della fatturazione delle richieste già inviate. La ricerca web Fireworks non è necessaria. Understat richiede il piccolo relay descritto sotto. Richieste Fireworks con `store: false`; valgono le condizioni dei provider.
 
 ## Tema visivo
 
@@ -102,3 +100,33 @@ L’analisi AI usa automaticamente il regolamento salvato e segnala una raccoman
 La home mostra le squadre salvate. Ogni scheda apre direttamente la rosa; Formazione e Regole sono sezioni interne della squadra. I link includono l’ID della squadra per mantenere il contesto usando Indietro o ricaricando. Gli archivi esistenti sono conservati; una nuova installazione parte senza squadre demo.
 
 La creazione richiede nome e listone, con importazione TXT/testo facoltativa. La rosa è suddivisa per ruolo, con ricerca per nome/club e filtri. Toccare un giocatore apre disponibilità e rimozione. “Gestisci” permette di rinominare o eliminare la squadra, anche l’ultima. Le impostazioni AI e l’installazione sono nel menu Impostazioni.
+
+## Estrazione Understat
+
+La pagina Serie A carica numeri da `https://understat.com/getLeagueData/Serie_A/{stagione}` con l’header `X-Requested-With: XMLHttpRequest`. È l’endpoint pubblico usato dal sito, non un’API ufficiale con garanzia di stabilità. Verificato il 7 ottobre 2026: 448 giocatori, 20 squadre, 380 partite. Il browser non può leggerlo direttamente (CORS); Tavily Extract restituisce 404 per questo endpoint.
+
+`worker/understat-worker.mjs` fornisce un relay stateless, senza account applicativi, chiavi o database. Accetta solo GET della Serie A per una stagione valida, verifica il formato, espone soltanto campi pubblici necessari e usa la cache Cloudflare per cinque minuti. CORS consente soltanto gli origin configurati; non è autenticazione e l’endpoint pubblico può essere usato da client non browser. Non inoltra chiavi o header del chiamante e non accetta URL arbitrari. Errori, JSON malformato e cambi di schema interrompono l’aggiornamento prima delle chiamate a pagamento.
+
+Il codice calcola xG, npxG, xA, minuti, tiri e valori per 90; medie xG/xGA squadra per partita, separate in totale/casa/trasferta e accompagnate dal numero di partite. I valori mancanti restano null, distinti dallo zero. Il campione dei trasferiti può includere più club. Matching nome/iniziali + club, senza fuzzy match: ambiguità o assenze rimangono visibili. Presenze Understat non sono presenze a voto Fantacalcio.
+
+Il calendario include le partite future nei prossimi 14 giorni, con orari UTC. L’endpoint non espone il numero della giornata: l’AI deve incrociarlo con il calendario raccolto, senza equiparare automaticamente “prossima partita” e giornata richiesta. Tutte le 20 squadre sono incluse per consentire il confronto con l’avversaria; nessuna probabilità di bonus viene inventata. Il timestamp di recupero e la data dell’ultima partita registrata sono entrambi mostrati.
+
+Test live senza API a pagamento: `node scripts/understat-smoke.mjs`. Il report locale è in `research-results/understat-live.json` (escluso da Git).
+
+Preview locale con l’adattatore Vercel: `VERCEL=1 npm run build`, poi `npm run dev`. Apri `http://localhost:8007`, Impostazioni AI e premi Verifica collegamento. Il server serve solo dist, non file .env o report locali. Senza `VERCEL=1`, il frontend mantiene il campo per configurare un relay esterno.
+
+Deploy del relay, dall’account Cloudflare del proprietario: `npx wrangler deploy --config worker/wrangler.jsonc`. Configurare `ALLOWED_ORIGINS` per il dominio dell’app. Nessun secret richiesto. Dopo il deploy incollare il dominio HTTPS workers.dev nel campo Servizio Understat dell’app. Il build GitHub Pages continua a pubblicare solo il frontend: non distribuisce automaticamente il Worker. I limiti del piano Workers si applicano anche a questo servizio.
+
+## Hosting Vercel Hobby
+
+La configurazione `vercel.json` pubblica il frontend da `dist` e la funzione Node 22 `api/understat.mjs`. Il build esegue i test prima di generare i file pubblici. Su Vercel il servizio Understat usa automaticamente lo stesso dominio dell’app; non occorre un Worker separato. La cache dei dati pubblici dura cinque minuti per istanza attiva della funzione. Le risposte HTTP non vengono salvate in cache pubbliche né dal service worker.
+
+Dopo aver pubblicato queste modifiche nel repository:
+
+1. Crea un account Vercel Hobby e importa il repository FantaApp, con directory principale del repository e framework Other. Build e output sono definiti in `vercel.json`.
+2. Per accesso privato, configura Security → Deployment Protection → Vercel Authentication → All Deployments. È disponibile gratuitamente anche per produzione ([annuncio Vercel](https://vercel.com/changelog/protect-production-deployments-for-free-on-every-plan)). Verifica sia la home sia `/api/understat?season=2026` da una finestra non autenticata. Il piano Hobby da solo non rende privata l’app.
+3. Verifica il collegamento Understat nelle impostazioni AI dopo l’accesso. La funzione non richiede chiavi API.
+
+Questa preparazione non configura un database: squadre, regole e chiavi provider rimangono nel localStorage. Il nuovo dominio ha un archivio browser separato da GitHub Pages; le rose esistenti non migrano automaticamente. Un successivo collegamento a Neon richiederà schema, endpoint protetti, credenziali server e migrazione dei dati locali. Anche il trasferimento delle chiamate Fireworks/Tavily al backend è un passaggio separato. Non inserire segreti nel codice frontend o in variabili pubbliche.
+
+Il workflow GitHub Pages esistente rimane attivo finché non viene esplicitamente disabilitato: la protezione Vercel non protegge il vecchio sito. Il server locale non simula l’autenticazione Vercel; la protezione va verificata sul deployment reale.

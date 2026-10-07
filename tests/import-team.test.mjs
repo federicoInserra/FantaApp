@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from '../src/import-team.mjs';
 import { isValidState } from '../src/storage.mjs';
+import { squadSignature } from '../src/research.mjs';
 import { analyzeSquad } from '../src/analysis.mjs';
 const text = "Squadra: Squadra test\n\nP - Portiere (Milan)\nD - Carlos Augusto (Inter)\nC - Calo' (Frosinone)\nA - Castro S (Roma)";
 
@@ -49,7 +50,7 @@ test('creation without import produces an empty squad for manual entry later', (
 test('imported squad uses the selected catalog for AI', async () => {
  const team=createTeam({name:'Test',listSource:'fantamaster',imported:parseTeamText(text)},()=> 'id');
  let called=false;
- await assert.rejects(analyzeSquad({key:'test',team,fetchImpl:async (url,options)=> {
+ await assert.rejects(analyzeSquad({key:'test',team,research:{createdAt:new Date().toISOString(),signature:squadSignature(team),matchday:'',understat:{provider:'Understat'},players:[{observations:[{}]}],sources:[]},fetchImpl:async (url,options)=> {
   called=true;
   assert.equal(JSON.parse(JSON.parse(options.body).input).listone,'fantamaster');
   return {ok:false,status:403};

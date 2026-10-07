@@ -1,0 +1,7 @@
+{
+  "name": "fantaapp-understat",
+  "main": "understat-worker.mjs",
+  "compatibility_date": "2026-10-07",
+  "workers_dev": true,
+  "vars": { "ALLOWED_ORIGINS": "https://federicoinserra.github.io" }
+}
