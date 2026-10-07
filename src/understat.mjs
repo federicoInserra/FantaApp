@@ -57,6 +57,8 @@ function canonical(value) { return String(value).normalize('NFKD').replace(/\p{M
 const CLUB_ALIASES = { milan:'ac milan', parma:'parma calcio 1913', verona:'hellas verona', inter:'inter', 'internazionale':'inter' };
 function clubKey(value) { const key=canonical(value);return CLUB_ALIASES[key] ?? key; }
 function nameMatches(rosterName, providerName) {
+  // Verified provider spelling: Understat player 6692 is Enrico Del Prato.
+  if (canonical(rosterName) === 'delprato') rosterName = 'Del Prato';
   const a=canonical(rosterName).split(' '),b=canonical(providerName).split(' ');
   // Whole words and initials only. Ambiguous results remain unresolved; no fuzzy guessing.
   return a.length && a.some(x=>x.length>1) && a.every(x=>b.some(y=>x===y || x.length===1 && y.startsWith(x)));
@@ -65,7 +67,7 @@ export function matchSquad(league, roster) {
   return roster.map(p=>{
     const clubs=league.teams.filter(t=>clubKey(t.name)===clubKey(p.club));
     const team=clubs.length===1 ? clubs[0] : null;
-    const candidates=team ? league.players.filter(u=>u.teamIds.includes(team.id) && nameMatches(p.name,u.name)) : [];
+    const candidates=team ? league.players.filter(u=>u.teamIds.includes(team.id) && nameMatches(p.role === 'P' && canonical(p.name) === 'terracciano' ? 'Pietro Terracciano' : p.name,u.name)) : [];
     const player=candidates.length===1 ? candidates[0] : null;
     const reason = !team ? 'Club non trovato in Serie A.' : candidates.length>1 ? 'Nome ambiguo: serve il nome completo.' : !player ? 'Giocatore non trovato nel club indicato.' : [player.minutes,player.npxg,player.xa].some(v=>v===null) ? 'Statistiche giocatore incomplete.' : !player.minutes ? 'Nessun minuto registrato: valori per 90 non disponibili.' : !team.overall.games || team.overall.xg===null || team.overall.xga===null ? 'Statistiche squadra incomplete.' : '';
     return {rosterId:p.id,name:p.name,teamId:team?.id ?? null,player,reason};

@@ -1,15 +1,15 @@
+import {coverageOf} from './primary-research.mjs';
 import { getAIStatus } from './ai-api.mjs';
 import { HOSTED_API } from './deployment.mjs';
 import { UNDERSTAT_URL_STORAGE } from './understat.mjs';
 import { teamRules } from './rules.mjs';
 import { API_KEY_STORAGE, analyzeSquad } from './analysis.mjs';
-import { TAVILY_KEY_STORAGE, researchSquad, researchBudget, loadResearch, saveResearch, staleReason, FIELDS } from './research.mjs';
+import { TAVILY_KEY_STORAGE, researchSquad, loadResearch, saveResearch, staleReason, FIELDS } from './research.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
 try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Legacy credentials are optional. */ }
 let serverStatus = {fireworks:false,tavily:false};
 const fireworksReady = () => HOSTED_API ? serverStatus.fireworks : Boolean(key);
-const tavilyReady = () => HOSTED_API ? serverStatus.tavily : Boolean(tavilyKey);
 if (HOSTED_API) {
   understatURL = location.origin;
   key = ''; tavilyKey = '';
@@ -35,8 +35,8 @@ function understatView(data) {
 }
 function dataView(data) {
   if (!data) return '';
-  const covered = data.players.filter(p => p.observations.length).length;
-  return `<div class="research-summary"><p><strong>${covered}/${data.players.length} giocatori con notizie o voti raccolti</strong><br><span>Raccolta: ${escape(dateLabel(data.createdAt))} · ${escape(data.credits)} crediti Tavily</span></p><p class="field-hint">Le citazioni sono controllate nel testo recuperato; l’interpretazione AI resta da verificare. I campi mancanti non sono stimati.</p>${data.warnings.map(w => `<p class="field-hint">${escape(w)}</p>`).join('')}<details class="research-details"><summary>Esamina dati e fonti</summary>${data.players.map(player => `<section class="research-player"><h3>${escape(player.name)}</h3>${player.observations.map(o => `<div class="research-observation"><strong>${escape(FIELDS[o.field])}</strong><p>${escape(o.value)} ${o.kind === 'forecast' ? '<span class="forecast-label">Previsione</span>' : ''}</p><small>${escape([o.period,o.unit,o.updatedAt].filter(Boolean).join(' · '))} [${escape(o.sourceId)}]</small><details><summary>Citazione</summary><blockquote>${escape(o.quote)}</blockquote></details></div>`).join('')}<p class="field-hint">Da verificare: ${player.missing.filter(field => !['minutes','xg','xa','shots'].includes(field)).map(field => escape(FIELDS[field])).join(', ') || 'nessun campo mancante'}.</p></section>`).join('')}<h3>Fonti recuperate</h3><ul>${data.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details></div>`;
+  const coverage = coverageOf(data.players);
+  return `<div class="research-summary"><p><strong>Fantacalcio · ${coverage.statistics}/${coverage.total} schede statistiche</strong><br><span>Raccolta: ${escape(dateLabel(data.createdAt))} · 0 crediti Tavily · nessuna chiamata AI</span></p><p class="field-hint">Media voto e fantamedia: ${coverage.averages}/${coverage.total} · Titolarità o panchina prevista: ${coverage.starting}/${coverage.total} · Avversario e orario verificati: ${coverage.matchup}/${coverage.total}.<br>Segnalazioni esplicite su infortuni o squalifiche: ${coverage.availability}/${coverage.total}. Nessuna segnalazione non significa disponibilità confermata. Dati letti dalle tabelle; nessun valore stimato.</p>${data.warnings.map(w => `<p class="field-hint">${escape(w)}</p>`).join('')}<details class="research-details"><summary>Esamina dati e fonti</summary>${data.players.map(player => `<section class="research-player"><h3>${escape(player.name)}</h3>${player.observations.map(o => `<div class="research-observation"><strong>${escape(FIELDS[o.field])}</strong><p>${escape(o.value)} ${o.kind === 'forecast' ? '<span class="forecast-label">Previsione</span>' : ''}</p><small>${escape([o.period,o.unit,o.updatedAt].filter(Boolean).join(' · '))} [${escape(o.sourceId)}]</small><details><summary>Citazione</summary><blockquote>${escape(o.quote)}</blockquote></details></div>`).join('')}<p class="field-hint">Da verificare: ${player.missing.filter(field => !['minutes','xg','xa','shots'].includes(field)).map(field => escape(FIELDS[field])).join(', ') || 'nessun campo mancante'}.</p></section>`).join('')}<h3>Fonti recuperate</h3><ul>${data.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details></div>`;
 }
 function refresh() {
   const host = document.querySelector('#ai-analysis');
@@ -48,13 +48,13 @@ function refresh() {
   const reason = staleReason(entry.research,team,entry.matchday);
   host.innerHTML = `<section class="content-card compact ai-card"><p class="eyebrow">PREPARA LA GIORNATA</p><h2>Dai dati alla formazione</h2><p class="ai-description">Aggiorna le informazioni sui tuoi giocatori, poi chiedi una proposta con le regole della tua lega.</p>
     <label for="ai-matchday">Giornata da preparare</label><input id="ai-matchday" maxlength="120" placeholder="Prossima giornata non ancora iniziata" value="${escape(entry.matchday)}" ${pending ? 'disabled' : ''}>
-    <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Understat fornisce le statistiche. Tavily cerca voti e notizie; GLM li organizza. Budget indicativo: ${researchBudget(team)} crediti Tavily per aggiornamento, più il consumo Fireworks. I dati restano disponibili su questo dispositivo.</p><button id="ai-research" class="button button-primary" ${pending || !fireworksReady() || !tavilyReady() || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
+    <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Voti, fantamedia e probabili formazioni da Fantacalcio; xG e xA da Understat. Lettura diretta, senza crediti Tavily o chiamate AI. I dati restano disponibili su questo dispositivo.</p><button id="ai-research" class="button button-primary" ${pending || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
     ${understatView(entry.research?.understat)}${dataView(entry.research)}<p id="research-warning" class="field-hint">${escape(reason)}</p>
     <div class="research-step"><h3><span>02</span> Scegli la formazione</h3><p class="field-hint">DeepSeek usa i dati salvati, senza nuove ricerche. <a href="#regole/${encodeURIComponent(team.id)}">Modifica regole</a></p><button id="ai-analyze" class="button button-outline" ${pending || !fireworksReady() || reason ? 'disabled' : ''}>${busy && pending.kind === 'analysis' ? 'Analisi in corso…' : 'Suggerisci formazione'}</button></div>
     <div class="ai-actions">${busy ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}</div>
-    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() || !tavilyReady() ? (HOSTED_API ? 'Servizi AI non disponibili. Verifica la configurazione su Vercel.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
+    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() ? (HOSTED_API ? 'DeepSeek non disponibile. Puoi comunque aggiornare i dati.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
     ${entry.error ? `<p class="import-error" role="alert">${escape(entry.error)}</p>` : ''}
-    ${entry.result ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">${escape(entry.date)} · ${escape(entry.analyzedMatchday || 'Prossima giornata')} · Da verificare prima della consegna.</p>${entry.fingerprint !== fingerprint(team) || entry.researchAt !== entry.research?.createdAt || entry.analyzedMatchday !== entry.matchday || reason ? '<p class="import-error">Questa proposta è superata. Generane una nuova con dati aggiornati.</p>' : ''}<div class="ai-result-text">${escape(entry.result.text)}</div><p class="field-hint">I riferimenti [S…] corrispondono alle fonti nei dati raccolti. La rosa non è stata modificata.</p></section>` : ''}</section>`;
+    ${entry.result ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">${escape(entry.date)} · ${escape(entry.analyzedMatchday || 'Prossima giornata')} · Da verificare prima della consegna.</p>${entry.fingerprint !== fingerprint(team) || entry.researchAt !== entry.research?.createdAt || entry.analyzedMatchday !== entry.matchday || reason ? '<p class="import-error">Questa proposta è superata. Generane una nuova con dati aggiornati.</p>' : ''}<div class="ai-result-text">${escape(entry.result.text)}</div><p class="field-hint">I riferimenti [F…] e [U1] corrispondono alle fonti nei dati raccolti. La rosa non è stata modificata.</p></section>` : ''}</section>`;
   host.querySelector('#ai-matchday').oninput = event => {
     entry.matchday = event.target.value;
     const reason = staleReason(entry.research,team,entry.matchday);
@@ -89,6 +89,6 @@ async function run(kind,team,entry) {
       Object.assign(entry,{ result,fingerprint:fingerprint(snapshot),researchAt:entry.research.createdAt,date:dateLabel(new Date()),analyzedMatchday:matchday });
     }
   } catch (error) {
-    entry.error = controller.signal.aborted ? (timedOut ? 'Tempo massimo raggiunto.' : 'Richiesta annullata.') + ' I dati precedenti sono conservati. Le richieste già inviate possono consumare credito.' : error.name === 'QuotaExceededError' ? 'Spazio locale insufficiente. I dati precedenti sono conservati.' : error.message;
+    entry.error = controller.signal.aborted ? (timedOut ? 'Tempo massimo raggiunto.' : 'Richiesta annullata.') + ` I dati precedenti sono conservati. ${kind === 'analysis' ? 'La richiesta AI già inviata può consumare credito.' : 'Nessun credito consumato.'}` : error.name === 'QuotaExceededError' ? 'Spazio locale insufficiente. I dati precedenti sono conservati.' : error.message;
   } finally { clearTimeout(timer); pending = null; refresh(); }
 }

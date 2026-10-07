@@ -15,6 +15,9 @@
     },
     "api/teams.mjs": {
       "maxDuration": 30
+    },
+    "api/fantacalcio.mjs": {
+      "maxDuration": 30
     }
   },
   "headers": [

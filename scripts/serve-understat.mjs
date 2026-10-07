@@ -2,6 +2,7 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
+import {handleFantacalcio} from '../server/fantacalcio-source.mjs';
 import {handleTeams} from '../server/teams-api.mjs';
 import {handleAI} from '../server/ai-proxy.mjs';
 import {handleVercelUnderstat} from '../server/vercel-understat.mjs';
@@ -22,6 +23,10 @@ createServer(async(req,res)=>{
   if(['/api/ai','/api/ai-status','/api/teams'].includes(url.pathname)) {
     const request=new Request(url,{method:req.method,headers:req.headers,...(['POST','PUT'].includes(req.method)?{body:req,duplex:'half'}:{})});
     const result=await (url.pathname==='/api/teams'?handleTeams(request,{store:previewStore}):handleAI(request));
+    res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
+  }
+  if(url.pathname==='/api/fantacalcio'){
+    const result=await handleFantacalcio(new Request(url,{method:req.method,headers:req.headers}));
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
   }
   if(url.pathname==='/api/understat'){

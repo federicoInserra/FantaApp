@@ -41,11 +41,15 @@ python3 scripts/import-player-lists.py /percorso/fantamaster_list.xlsx /percorso
 
 ## Ricerca e formazione AI
 
-In Vercel → Environment Variables configura `FIREWORKS_API_KEY` e `TAVILY_API_KEY` per Production e ridistribuisci. Le chiavi restano sul server. All’avvio l’app controlla automaticamente la presenza delle chiavi, senza consumare credito e senza verificarne la validità.
+In Vercel → Environment Variables configura `FIREWORKS_API_KEY` per Production e ridistribuisci. Le chiavi restano sul server. All’avvio l’app controlla automaticamente la presenza delle chiavi, senza consumare credito e senza verificarne la validità.
 
-**Aggiorna dati** legge Understat, cerca voti e notizie con Tavily e passa gli estratti a GLM. Le osservazioni devono avere citazioni presenti nei testi; questo controllo non garantisce l’interpretazione corretta. **Suggerisci formazione** passa a DeepSeek rosa, regole e raccolta, senza strumenti web. Le risposte sono proposte da verificare, non modifiche automatiche della squadra.
+**Aggiorna dati** legge direttamente le tabelle pubbliche Fantacalcio (media voto, fantamedia, presenze a voto, bonus/malus) e le probabili formazioni, più i dati numerici Understat. Non chiama Tavily o Fireworks e non consuma crediti dei provider. **Suggerisci formazione** resta una chiamata a DeepSeek e passa rosa, regole e raccolta senza strumenti web.
 
-Le raccolte di ricerca, separate dall’archivio squadre, restano sul dispositivo e scadono dopo sei ore o cambiamenti di rosa/giornata. La ricerca costa indicativamente numero giocatori + un gruppo notizie ogni quattro + estrazione iniziale: circa 33 crediti Tavily per 25 giocatori, oltre ai token Fireworks. Nessun tentativo automatico. Annullare non garantisce l’interruzione della fatturazione delle richieste già inviate.
+Il parser verifica stagione, intestazioni, identità/club e ambiguità. Le medie di chi ha zero presenze a voto restano mancanti, non zero. Le previsioni sono usate solo se aggiornate negli ultimi due giorni di calendario, per la giornata richiesta (numero o vuoto), e se il confronto delle squadre casa/trasferta trova una sola partita futura in Understat. Le percentuali editoriali indicano titolarità, non probabilità di prendere voto. L’assenza dall’elenco infortunati non prova la disponibilità. Piazzati e notizie aggiuntive restano da verificare.
+
+Il relay `/api/fantacalcio` scarica solo due URL fissi, non inoltra credenziali, limita dimensione e timeout e conserva una cache server di cinque minuti. Se una fonte cambia struttura il parser segnala dati mancanti; non attiva ricerche a pagamento. Le raccolte, separate dalle squadre nel DB, restano sul dispositivo per sei ore. I risultati del vecchio flusso devono essere aggiornati.
+
+Test live senza chiavi o crediti: `node scripts/research-free-smoke.mjs /percorso/rosa.txt`. Il report diagnostico finisce in `research-results/free-research.json` (escluso da Git). Eseguire manualmente: i test automatici usano estratti HTML locali con casi di regressione.
 
 Il backend accetta solo modelli, fonti e parametri previsti dall’app, limita dimensioni e token, e non inoltra cookie del browser ai provider. Timeout provider 170 secondi e funzione AI 180 secondi. `/api/ai-status` restituisce soltanto booleani di configurazione.
 
