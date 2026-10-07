@@ -79,7 +79,7 @@ function refresh() {
 async function run(kind,team,entry) {
   if (pending) return;
   const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday;
-  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.notice = ''; entry.progress = '';
+  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 3 minuti.' : '';
   refresh();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, kind === 'research' ? 600000 : 180000);
