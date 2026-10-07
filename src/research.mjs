@@ -1,3 +1,4 @@
+import { HOSTED_API } from './deployment.mjs';
 import { fetchUnderstat, understatSnapshot, validUnderstatSnapshot } from './understat.mjs';
 import { ENDPOINT, postJSON, responseText } from './ai-api.mjs';
 export const TAVILY_KEY_STORAGE = 'fantaapp.tavily.key.v1';
@@ -75,7 +76,7 @@ Rispondi solo JSON: {"players":[{"id":"ID fornito","observations":[{"field":"uno
     input: JSON.stringify({ requestedAt: now.toISOString(), timezone: 'Europe/Rome', matchday: matchday || 'Prossima giornata Serie A non ancora iniziata', allowedFields: Object.fromEntries(Object.entries(FIELDS).filter(([field]) => !['minutes','xg','xa','shots'].includes(field))), players: players.map(({ id, name, club, role }) => ({ id, name, club, role })), sources }) };
 }
 export async function researchSquad({ tavilyKey, fireworksKey, team, matchday = '', understatURL, signal, fetchImpl = fetch, now = new Date(), onProgress = () => {} }) {
-  if (!tavilyKey?.trim() || !fireworksKey?.trim()) throw new Error('Aggiungi entrambe le chiavi Tavily e Fireworks.');
+  if (!HOSTED_API && (!tavilyKey?.trim() || !fireworksKey?.trim())) throw new Error('Aggiungi entrambe le chiavi Tavily e Fireworks.');
   if (!team.players.length || team.players.length > 40) throw new Error('La ricerca richiede una rosa da 1 a 40 giocatori.');
   if (!team.listSource && team.importedFrom !== 'txt') throw new Error('Scegli un listone e usa una rosa reale.');
   onProgress('Lettura statistiche Understat…');

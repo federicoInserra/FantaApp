@@ -74,7 +74,9 @@ Le squadre create nelle versioni precedenti vengono conservate. L’importazione
 
 ## Analisi AI della giornata
 
-Apri **Impostazioni AI** e salva le chiavi Fireworks e Tavily. Sono conservate separatamente nel localStorage e inviate solo al rispettivo provider. I campi vuoti conservano le chiavi precedenti; i pulsanti Dimentica le eliminano. Gli script sullo stesso origin possono leggerle: usa chiavi dedicate e un dispositivo fidato.
+Su Vercel le chiavi Fireworks e Tavily vengono lette soltanto dal backend (configurazione sotto). Le impostazioni mostrano se sono configurate, senza restituirle al browser. La verifica controlla la presenza, non la validità o il credito.
+
+Su GitHub Pages o nel build statico locale, apri **Impostazioni AI** e salva le chiavi Fireworks e Tavily. Sono conservate separatamente nel localStorage e inviate solo al rispettivo provider. I campi vuoti conservano le chiavi precedenti; i pulsanti Dimentica le eliminano. Gli script sullo stesso origin possono leggerle: usa chiavi dedicate e un dispositivo fidato.
 
 Nella formazione, **Aggiorna dati** recupera le pagine Serie A note e cerca statistiche e notizie per la rosa con Tavily. GLM organizza gli estratti e conserva solo osservazioni con citazioni presenti nei testi. Questo controllo non garantisce la correttezza dell’interpretazione: esamina fonti e campi mancanti. Tavily riceve nomi e club; Fireworks riceve rosa, estratti e, per la formazione, regolamento.
 
@@ -127,6 +129,19 @@ Dopo aver pubblicato queste modifiche nel repository:
 2. Per accesso privato, configura Security → Deployment Protection → Vercel Authentication → All Deployments. È disponibile gratuitamente anche per produzione ([annuncio Vercel](https://vercel.com/changelog/protect-production-deployments-for-free-on-every-plan)). Verifica sia la home sia `/api/understat?season=2026` da una finestra non autenticata. Il piano Hobby da solo non rende privata l’app.
 3. Verifica il collegamento Understat nelle impostazioni AI dopo l’accesso. La funzione non richiede chiavi API.
 
-Questa preparazione non configura un database: squadre, regole e chiavi provider rimangono nel localStorage. Il nuovo dominio ha un archivio browser separato da GitHub Pages; le rose esistenti non migrano automaticamente. Un successivo collegamento a Neon richiederà schema, endpoint protetti, credenziali server e migrazione dei dati locali. Anche il trasferimento delle chiamate Fireworks/Tavily al backend è un passaggio separato. Non inserire segreti nel codice frontend o in variabili pubbliche.
+Questa preparazione non configura un database: squadre e regole rimangono nel localStorage. Su Vercel le chiavi provider sono gestite dal backend. Il nuovo dominio ha un archivio browser separato da GitHub Pages; le rose esistenti non migrano automaticamente. Un successivo collegamento a Neon richiederà schema, endpoint protetti, credenziali server e migrazione dei dati locali. Non inserire segreti nel codice frontend o in variabili pubbliche.
 
 Il workflow GitHub Pages esistente rimane attivo finché non viene esplicitamente disabilitato: la protezione Vercel non protegge il vecchio sito. Il server locale non simula l’autenticazione Vercel; la protezione va verificata sul deployment reale.
+
+
+### Chiavi Fireworks e Tavily sul server
+
+Prima di attivare il backend AI, mantieni **Vercel Authentication → All Deployments** e verifica l’accesso non autenticato. L’autenticazione è fornita da Vercel, non dal controllo Origin del codice. Non disabilitare la protezione: esporrebbe le chiamate a pagamento a terzi. Il server di sviluppo è solo locale e non simula questa autenticazione.
+
+In Project Settings → Environment Variables aggiungi `FIREWORKS_API_KEY` e `TAVILY_API_KEY` per Production. Aggiungile a Preview solo se intendi usare lì i servizi. Non usare prefissi pubblici. Dopo il salvataggio serve un nuovo deployment: le variabili non modificano le funzioni già distribuite. Nessuna chiave deve entrare nel repository, nel build statico o negli screenshot.
+
+Su Vercel, `/api/ai-status` restituisce soltanto due booleani. `/api/ai` inoltra le richieste ai tre endpoint fissi Fireworks Responses, Tavily Search ed Extract. Non inoltra header del browser o cookie ai provider. I modelli, i token massimi, le fonti e i parametri di ricerca sono limitati sul server; strumenti web Fireworks, streaming e conservazione della risposta sono disabilitati. Richieste e risposte hanno limiti di dimensione, errori generici e nessun tentativo automatico. Timeout provider 170 secondi; funzione Vercel 180 secondi. Annullare nel browser non garantisce l’interruzione della fatturazione del provider.
+
+Il client su Vercel rimuove le vecchie chiavi dal localStorage di quel dominio, non le carica sul server e usa solo gli endpoint dello stesso dominio con la sessione Vercel. Le eventuali chiavi salvate sul vecchio dominio GitHub Pages sono separate. Il service worker non memorizza risposte API. Il frontend statico continua a supportare chiavi locali.
+
+Per provare senza chiamate a pagamento: `npm test`. Per una preview del flusso ospitato: `VERCEL=1 npm run build`, poi `npm run dev`. Senza variabili ambiente, lo stato deve indicare “da configurare”. Puoi avviare il server con un file env locale ignorato da Git per testare lo stato configurato: le chiavi vengono usate dai provider solo premendo Aggiorna dati o Suggerisci formazione.

@@ -1,13 +1,21 @@
+import { HOSTED_API } from './deployment.mjs';
 export const ENDPOINT = 'https://api.fireworks.ai/inference/v1/responses';
-export async function postJSON(url, key, body, { signal, fetchImpl = fetch, provider = 'Fireworks' } = {}) {
+export async function postJSON(url, key, body, { signal, fetchImpl = fetch, provider = 'Fireworks', hosted = HOSTED_API } = {}) {
   let response;
+  const action = url === ENDPOINT ? 'fireworks' : url === 'https://api.tavily.com/search' ? 'search' : url === 'https://api.tavily.com/extract' ? 'extract' : null;
+  if (hosted && !action) throw new Error('Servizio non supportato.');
+  const headers = { 'Content-Type': 'application/json' };
+  if (!hosted) headers.Authorization = `Bearer ${key.trim()}`;
   try {
-    response = await fetchImpl(url, { method: 'POST', headers: { Authorization: `Bearer ${key.trim()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+    response = await fetchImpl(hosted ? '/api/ai' : url, { method: 'POST', headers, body: JSON.stringify(hosted ? {action,body} : body), signal, credentials: hosted ? 'same-origin' : 'omit' });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error(`Connessione a ${provider} non riuscita. Controlla Internet e riprova.`);
   }
+  if (hosted && (response.redirected || response.headers?.get('content-type')?.includes('text/html'))) throw new Error('Sessione scaduta. Riapri l’app e accedi con Vercel.');
   if (!response.ok) {
+    if (hosted && response.status === 503) throw new Error('Configura le chiavi nelle variabili ambiente Vercel e ridistribuisci l’app.');
+    if (hosted && response.status === 504) throw new Error('Tempo massimo del servizio raggiunto. Nessun tentativo automatico.');
     const messages = { 401: 'Chiave API non valida.', 403: 'Accesso negato al servizio o al modello.', 402: 'Credito insufficiente.', 429: 'Limite di richieste raggiunto.', 432: 'Limite del piano raggiunto.', 433: 'Limite di spesa raggiunto.' };
     throw new Error(`${provider}: ${messages[response.status] ?? `richiesta non riuscita (HTTP ${response.status}).`} Nessun tentativo automatico.`);
   }
@@ -19,4 +27,13 @@ export function responseText(data) {
     .flatMap(item => item.content ?? []).filter(part => part.type === 'output_text' && typeof part.text === 'string').map(part => part.text).join('\n');
   if (!text.trim()) throw new Error('Risposta AI vuota.');
   return text;
+}
+
+export async function getAIStatus({fetchImpl = fetch, signal} = {}) {
+  const response = await fetchImpl('/api/ai-status', {credentials:'same-origin',cache:'no-store',signal});
+  if (response.redirected || response.headers?.get('content-type')?.includes('text/html')) throw new Error('Accedi con Vercel per verificare i servizi.');
+  if (!response.ok) throw new Error('Verifica dei servizi non riuscita. Riprova.');
+  const data = await response.json();
+  if (typeof data.fireworks !== 'boolean' || typeof data.tavily !== 'boolean') throw new Error('Stato dei servizi non valido.');
+  return {fireworks:data.fireworks,tavily:data.tavily};
 }

@@ -1,3 +1,4 @@
+import { HOSTED_API } from './deployment.mjs';
 import { rulesText } from './rules.mjs';
 import { ENDPOINT, postJSON, responseText } from './ai-api.mjs';
 import { staleReason } from './research.mjs';
@@ -28,7 +29,7 @@ export function parseResponse(data, research) {
   return { text: responseText(data), sources: (research?.sources ?? []).map(({id,url,title}) => ({ id,url,title })), usage: data.usage ?? null };
 }
 export async function analyzeSquad({ key, team, research, matchday = '', rules = '', signal, fetchImpl = fetch, now = new Date() }) {
-  if (!key?.trim()) throw new Error('Aggiungi prima la chiave Fireworks nelle impostazioni AI.');
+  if (!HOSTED_API && !key?.trim()) throw new Error('Aggiungi prima la chiave Fireworks nelle impostazioni AI.');
   if (!team.listSource && team.importedFrom !== 'txt') throw new Error('Scegli un listone e usa una rosa reale prima di avviare l’analisi.');
   if (!team.players.length) throw new Error('Aggiungi prima i giocatori alla rosa.');
   const reason = staleReason(research, team, matchday, now.getTime());

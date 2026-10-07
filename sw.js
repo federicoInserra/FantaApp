@@ -1,6 +1,6 @@
 // Bump the version whenever an app-shell asset changes.
 const CACHE_PREFIX = `fantaapp-${self.registration.scope}-`;
-const CACHE = `${CACHE_PREFIX}v19`;
+const CACHE = `${CACHE_PREFIX}v20`;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './data/fantamaster.json', './data/leghe.json', './src/catalog.mjs', './src/storage.mjs', './src/import-team.mjs', './src/app.mjs', './src/rules.mjs', './src/analysis.mjs', './src/ai-api.mjs', './src/research.mjs', './src/understat.mjs', './src/deployment.mjs', './src/analysis-ui.mjs', './src/lineup.mjs', './src/pwa.mjs',
