@@ -21,8 +21,11 @@ test('proxy injects only the selected server credential and strips credential ec
 test('proxy rejects cross-site calls, tools, arbitrary models, excessive tokens and URLs before fetching',async()=>{
  const options={env,fetchImpl:()=>{throw new Error('must not fetch');}};
  assert.equal((await handleAI(request('fireworks',body,{Origin:'https://evil.example'}),options)).status,403);
- for(const payload of [{...body,tools:[{type:'web_search'}]},{...body,model:'expensive-model'},{...body,max_output_tokens:12001},{...body,model:'accounts/fireworks/models/glm-5p3-flash',max_output_tokens:6001}]) assert.equal((await handleAI(request('fireworks',payload),options)).status,400);
- assert.equal((await handleAI(request('fireworks',{...body,max_output_tokens:12000}),{env,fetchImpl:async()=>Response.json({status:'completed'})})).status,200);
+ for(const payload of [{...body,tools:[{type:'web_search'}]},{...body,model:'expensive-model'},{...body,max_output_tokens:36001},{...body,model:'accounts/fireworks/models/glm-5p3-flash',max_output_tokens:6001}]) assert.equal((await handleAI(request('fireworks',payload),options)).status,400);
+ assert.equal((await handleAI(request('fireworks',{...body,max_output_tokens:36000}),{env,fetchImpl:async(_url,options)=>{
+  assert.equal(JSON.parse(options.body).max_output_tokens,36000);
+  return Response.json({status:'completed'});
+ }})).status,200);
  assert.equal((await handleAI(request('extract',{urls:['http://127.0.0.1/']}),options)).status,400);
  assert.equal((await handleAI(request('search',{query:'football',include_domains:['evil.example']}),options)).status,400);
  assert.equal((await handleAI(request('fireworks',{...body,input:'a'.repeat(520000)}),options)).status,413);

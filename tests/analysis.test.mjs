@@ -8,7 +8,7 @@ const complete = { status: 'completed', output: [{ type: 'web_search_call', stat
 test('request requires research and excludes demo statistics', () => {
  const request = buildRequest(team, '8', 'Modificatore difesa');
  assert.equal(request.store, false);
- assert.equal(request.max_output_tokens, 12000);
+ assert.equal(request.max_output_tokens, 36000);
  assert.equal(request.tools, undefined);
  const input = JSON.parse(request.input);
  assert.equal(input.rosa[0].disponibile, false);
