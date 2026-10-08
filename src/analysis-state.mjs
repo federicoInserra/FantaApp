@@ -9,6 +9,11 @@ const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)&&Number.isFinit
 const fail=()=>{throw new Error('Risultati della ricerca o della formazione non validi.');};
 const url=v=>{try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 const list=(v,max)=>Array.isArray(v)&&v.length<=max;
+export const MAX_FOLLOW_UPS=10;
+export function storedFollowUp(data){
+  if(!text(data?.id,100)||!data.id||!date(data.createdAt)||!text(data.question,2000)||!data.question.trim()||!text(data.answer,8000)||!data.answer.trim())fail();
+  return pick(data,['id','createdAt','question','answer']);
+}
 export function analysisFingerprint(team){return JSON.stringify([team.name,team.listSource,teamRules(team),team.players.map(p=>[p.id,p.name,p.club,p.role,p.available])]);}
 function sourceMetadata(source){
   if(!text(source?.id,30)||!source.id||!url(source.url)||!text(source.url,1000)||!text(source.title,250))fail();
@@ -39,7 +44,10 @@ export function storedResearch(data){
 export function storedRecommendation(data){
   if(![1,2].includes(data?.version)||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
   const lineup=data.version===2?storedLineup(data.lineup):null;
-  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(lineup?{lineup,...(data.forecast!==undefined?{forecast:storedForecast(data.forecast,lineup)}:{})}:{}),sources:data.sources.map(sourceMetadata)});
+  if(data.followUps!==undefined&&!list(data.followUps,MAX_FOLLOW_UPS))fail();
+  const followUps=data.followUps?.map(storedFollowUp);
+  if(followUps&&new Set(followUps.map(item=>item.id)).size!==followUps.length)fail();
+  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(lineup?{lineup,...(data.forecast!==undefined?{forecast:storedForecast(data.forecast,lineup)}:{})}:{}),...(followUps?{followUps}:{}),sources:data.sources.map(sourceMetadata)});
 }
 export function recommendationIsStale(recommendation,team,research,matchday){
   return !research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;
@@ -73,6 +81,13 @@ export function withAnalysisResult(state,teamId,kind,result,expectedFingerprint)
       team.formation=recommendation.lineup.formation;
     }
     team.recommendation=recommendation;
+  }else if(kind==='followUp'){
+    const rec=team.recommendation;
+    if(!rec||rec.id!==result.recommendationId||recommendationIsStale(rec,team,team.research,result.matchday))throw new Error('La proposta o i dati sono cambiati. Riapri la formazione prima di fare altre domande.');
+    const history=rec.followUps??[];
+    if((history.at(-1)?.id??null)!==result.previousFollowUpId)throw new Error('La conversazione è cambiata. Ricarica la squadra prima di riprovare.');
+    const followUp=storedFollowUp(result);
+    team.recommendation=storedRecommendation({...rec,followUps:[...history,followUp].slice(-MAX_FOLLOW_UPS)});
   }else fail();
   return next;
 }

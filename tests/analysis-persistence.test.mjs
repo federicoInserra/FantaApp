@@ -92,3 +92,32 @@ test('failed recommendation save requires a reload and preserves the last pitch 
   client.fetchImpl=fetchImpl;await client.load();assert.equal(client.state.teams[0].formation,'3-4-3');assert.equal(client.state.teams[0].recommendation.id,'recommendation-one');
  }finally{await pg.close();}
 });
+
+test('follow-up conversation persists across devices without altering the lineup, forecast or original answer',async()=>{
+ const {pg,store,fetchImpl}=await database(),desktop=new DatabaseTeams({fetchImpl}),phone=new DatabaseTeams({fetchImpl});
+ try{
+  await desktop.load();let initial=withAnalysisResult(state(),team.id,'research',research(),analysisFingerprint(team));
+  initial=withAnalysisResult(initial,team.id,'recommendation',recommendation(research()),analysisFingerprint(team));await desktop.save(initial);
+  const before=desktop.state.teams[0];
+  const reply={id:'reply-one',createdAt:now.toISOString(),question:'Perché questo giocatore?',answer:'Per il voto documentato [F1].',recommendationId:before.recommendation.id,previousFollowUpId:null,matchday:'6'};
+  await desktop.save(withAnalysisResult(desktop.state,team.id,'followUp',reply,analysisFingerprint(team)));
+  await phone.load();const saved=phone.state.teams[0];
+  assert.equal(saved.recommendation.followUps[0].answer,reply.answer);assert.equal(saved.formation,before.formation);
+  assert.deepEqual(saved.recommendation.lineup,before.recommendation.lineup);assert.deepEqual(saved.recommendation.forecast,before.recommendation.forecast);assert.equal(saved.recommendation.text,before.recommendation.text);
+  assert.throws(()=>withAnalysisResult(phone.state,team.id,'followUp',{...reply,id:'late'},analysisFingerprint(team)),/conversazione è cambiata/);
+  desktop.fetchImpl=async()=>{throw Error('offline');};
+  await assert.rejects(desktop.save(withAnalysisResult(desktop.state,team.id,'followUp',{...reply,id:'lost',previousFollowUpId:reply.id},analysisFingerprint(team))));
+  assert.equal((await store.read()).state.teams[0].recommendation.followUps.length,1);
+ }finally{await pg.close();}
+});
+test('follow-up saves reject replaced context, retain only the last ten exchanges, and reset with a new proposal',()=>{
+ let saved=withAnalysisResult(state(),team.id,'research',research(),analysisFingerprint(team));
+ saved=withAnalysisResult(saved,team.id,'recommendation',recommendation(research()),analysisFingerprint(team));
+ const reply={id:'reply',createdAt:now.toISOString(),question:'Perché?',answer:'Motivo [F1].',recommendationId:'recommendation-one',previousFollowUpId:null,matchday:'6'};
+ for(const change of [s=>s.teams[0].recommendation.id='replacement',s=>s.teams[0].research.id='replacement',s=>s.teams[0].players[0].available=false]){const changed=structuredClone(saved);change(changed);assert.throws(()=>withAnalysisResult(changed,team.id,'followUp',reply,analysisFingerprint(team)));}
+ assert.throws(()=>withAnalysisResult(saved,team.id,'followUp',{...reply,matchday:'7'},analysisFingerprint(team)));
+ for(let i=0;i<12;i++)saved=withAnalysisResult(saved,team.id,'followUp',{...reply,id:`reply-${i}`,previousFollowUpId:i?`reply-${i-1}`:null},analysisFingerprint(team));
+ assert.equal(saved.teams[0].recommendation.followUps.length,10);assert.equal(saved.teams[0].recommendation.followUps[0].id,'reply-2');
+ saved=withAnalysisResult(saved,team.id,'recommendation',recommendation(research(),'new-rec'),analysisFingerprint(team));
+ assert.equal(saved.teams[0].recommendation.followUps,undefined);
+});

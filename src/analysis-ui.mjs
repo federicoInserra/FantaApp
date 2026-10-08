@@ -4,6 +4,7 @@ import { getAIStatus } from './ai-api.mjs';
 import { HOSTED_API } from './deployment.mjs';
 import { UNDERSTAT_URL_STORAGE } from './understat.mjs';
 import { API_KEY_STORAGE, analyzeSquad } from './analysis.mjs';
+import {askFollowUp,renderFollowUp,followUpUnavailableReason} from './follow-up.mjs';
 import { TAVILY_KEY_STORAGE, researchSquad, staleReason, FIELDS } from './research.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
@@ -33,6 +34,7 @@ function hydrate(team) {
   let entry=analyses.get(team.id);
   if(!entry){entry={matchday:team.research?.matchday??''};analyses.set(team.id,entry);}
   if(entry.research?.id!==team.research?.id)entry.matchday=team.research?.matchday??'';
+  if(entry.recommendation?.id!==team.recommendation?.id){entry.followUpDraft='';entry.followUpError='';}
   entry.research=team.research??null;entry.recommendation=team.recommendation??null;
   return entry;
 }
@@ -46,7 +48,7 @@ function understatView(data) {
 function dataView(data) {
   if (!data) return '';
   const coverage = coverageOf(data.players);
-  return `<div class="research-summary"><p><strong>Fantacalcio · ${coverage.statistics}/${coverage.total} schede statistiche</strong><br><span>Ultima ricerca: ${escape(dateLabel(data.completedAt))} · salvata nel database · 0 crediti Tavily · nessuna chiamata AI</span></p><p class="field-hint">Media voto e fantamedia: ${coverage.averages}/${coverage.total} · Titolarità o panchina prevista: ${coverage.starting}/${coverage.total} · Avversario e orario verificati: ${coverage.matchup}/${coverage.total}.<br>Segnalazioni esplicite su infortuni o squalifiche: ${coverage.availability}/${coverage.total}. Nessuna segnalazione non significa disponibilità confermata. Dati letti dalle tabelle; nessun valore stimato.</p>${data.warnings.map(w => `<p class="field-hint">${escape(w)}</p>`).join('')}<details class="research-details"><summary>Esamina dati e fonti</summary>${data.players.map(player => `<section class="research-player"><h3>${escape(player.name)}</h3>${player.observations.map(o => `<div class="research-observation"><strong>${escape(FIELDS[o.field])}</strong><p>${escape(o.value)} ${o.kind === 'forecast' ? '<span class="forecast-label">Previsione</span>' : ''}</p><small>${escape([o.period,o.unit,o.updatedAt].filter(Boolean).join(' · '))} [${escape(o.sourceId)}]</small><details><summary>Citazione</summary><blockquote>${escape(o.quote)}</blockquote></details></div>`).join('')}<p class="field-hint">Da verificare: ${player.missing.filter(field => !['minutes','xg','xa','shots'].includes(field)).map(field => escape(FIELDS[field])).join(', ') || 'nessun campo mancante'}.</p></section>`).join('')}<h3>Fonti recuperate</h3><ul>${data.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details></div>`;
+  return `<div class="research-summary"><p><strong>Fantacalcio · ${coverage.statistics}/${coverage.total} schede statistiche</strong><br><span>Ultima ricerca: ${escape(dateLabel(data.completedAt))} · salvata nel database · dati recuperati direttamente dalle fonti</span></p><p class="field-hint">Media voto e fantamedia: ${coverage.averages}/${coverage.total} · Titolarità o panchina prevista: ${coverage.starting}/${coverage.total} · Avversario e orario verificati: ${coverage.matchup}/${coverage.total}.<br>Segnalazioni esplicite su infortuni o squalifiche: ${coverage.availability}/${coverage.total}. Nessuna segnalazione non significa disponibilità confermata. Dati letti dalle tabelle; nessun valore stimato.</p>${data.warnings.map(w => `<p class="field-hint">${escape(w)}</p>`).join('')}<details class="research-details"><summary>Esamina dati e fonti</summary>${data.players.map(player => `<section class="research-player"><h3>${escape(player.name)}</h3>${player.observations.map(o => `<div class="research-observation"><strong>${escape(FIELDS[o.field])}</strong><p>${escape(o.value)} ${o.kind === 'forecast' ? '<span class="forecast-label">Previsione</span>' : ''}</p><small>${escape([o.period,o.unit,o.updatedAt].filter(Boolean).join(' · '))} [${escape(o.sourceId)}]</small><details><summary>Citazione</summary><blockquote>${escape(o.quote)}</blockquote></details></div>`).join('')}<p class="field-hint">Da verificare: ${player.missing.filter(field => !['minutes','xg','xa','shots'].includes(field)).map(field => escape(FIELDS[field])).join(', ') || 'nessun campo mancante'}.</p></section>`).join('')}<h3>Fonti recuperate</h3><ul>${data.sources.map(source => `<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details></div>`;
 }
 function refresh() {
   const host = document.querySelector('#ai-analysis');
@@ -58,13 +60,13 @@ function refresh() {
   const reason = staleReason(entry.research,team,entry.matchday);
   host.innerHTML = `<section class="content-card compact ai-card"><p class="eyebrow">PREPARA LA GIORNATA</p><h2>Dai dati alla formazione</h2><p class="ai-description">Aggiorna le informazioni sui tuoi giocatori, poi chiedi una proposta con le regole della tua lega.</p>
     <label for="ai-matchday">Giornata da preparare</label><input id="ai-matchday" maxlength="120" placeholder="Prossima giornata non ancora iniziata" value="${escape(entry.matchday)}" ${pending ? 'disabled' : ''}>
-    <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Voti, fantamedia e probabili formazioni da Fantacalcio; xG e xA da Understat. Lettura diretta, senza crediti Tavily o chiamate AI. L’ultima ricerca è salvata nel database e disponibile su tutti i tuoi dispositivi. Ogni aggiornamento sostituisce il precedente.</p><button id="ai-research" class="button button-primary" ${pending || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
+    <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Voti, fantamedia e probabili formazioni da Fantacalcio; xG e xA da Understat. Dati recuperati direttamente dalle fonti, senza chiamate AI. L’ultima ricerca è salvata nel database e disponibile su tutti i tuoi dispositivi. Ogni aggiornamento sostituisce il precedente.</p><button id="ai-research" class="button button-primary" ${pending || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
     ${understatView(entry.research?.understat)}${dataView(entry.research)}<p id="research-warning" class="field-hint">${escape(reason)}</p>
     <div class="research-step"><h3><span>02</span> Scegli la formazione</h3><p class="field-hint">DeepSeek usa i dati salvati, senza nuove ricerche. <a href="#regole/${encodeURIComponent(team.id)}">Modifica regole</a></p><button id="ai-analyze" class="button button-outline" ${pending || !fireworksReady() || reason ? 'disabled' : ''}>${busy && pending.kind === 'analysis' ? 'Analisi in corso…' : 'Suggerisci formazione'}</button></div>
     <div class="ai-actions">${busy && pending.phase !== 'saving' ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}</div>
     <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() ? (HOSTED_API ? 'DeepSeek non disponibile. Puoi comunque aggiornare i dati.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
     ${entry.error ? `<p class="import-error" role="alert">${escape(entry.error)}</p>` : ''}
-    ${entry.recommendation ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">Ultima proposta: ${escape(dateLabel(entry.recommendation.createdAt))} · salvata nel database<br>Dati della ricerca: ${escape(dateLabel(entry.recommendation.researchAt))} · ${escape(entry.recommendation.matchday || 'Prossima giornata')} · Da verificare prima della consegna.</p><p id="recommendation-stale" class="import-error" ${recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason?'':'hidden'}>Questa proposta è superata. Generane una nuova con dati aggiornati.</p><div class="ai-result-text">${escape(entry.recommendation.text)}</div><details><summary>Fonti di questa proposta</summary><ul>${entry.recommendation.sources.map(source=>`<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details><p class="field-hint">Ogni nuova proposta sostituisce la precedente. La rosa non è stata modificata.</p></section>` : ''}</section>`;
+    ${entry.recommendation ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">Ultima proposta: ${escape(dateLabel(entry.recommendation.createdAt))} · salvata nel database<br>Dati della ricerca: ${escape(dateLabel(entry.recommendation.researchAt))} · ${escape(entry.recommendation.matchday || 'Prossima giornata')} · Da verificare prima della consegna.</p><p id="recommendation-stale" class="import-error" ${recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason?'':'hidden'}>Questa proposta è superata. Generane una nuova con dati aggiornati.</p><div class="ai-result-text">${escape(entry.recommendation.text)}</div><details><summary>Fonti di questa proposta</summary><ul>${entry.recommendation.sources.map(source=>`<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details><p class="field-hint">Ogni nuova proposta sostituisce la precedente. La rosa non è stata modificata.</p>${renderFollowUp(team,{matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''})}</section>` : ''}</section>`;
   host.querySelector('#ai-matchday').oninput = event => {
     entry.matchday = event.target.value;
     const reason = staleReason(entry.research,team,entry.matchday);
@@ -72,17 +74,29 @@ function refresh() {
     host.querySelector('#ai-analyze').disabled = Boolean(pending || !fireworksReady() || reason);
     const warning=host.querySelector('#recommendation-stale');
     if(warning)warning.hidden=!(recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason);
+    const followUpReason=followUpUnavailableReason(team,entry.matchday),question=host.querySelector('#follow-up-question');
+    if(question){
+      const warning=host.querySelector('#follow-up-warning');warning.textContent=followUpReason;warning.hidden=!followUpReason;
+      question.disabled=Boolean(pending||!fireworksReady()||followUpReason);
+      host.querySelector('#follow-up-send').disabled=question.disabled||!question.value.trim();
+    }
     onContextChange?.(team,entry.matchday);
   };
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
+  host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);
   host.querySelector('#ai-analyze').onclick = () => run('analysis',team,entry);
+  const question=host.querySelector('#follow-up-question');
+  if(question){
+    question.oninput=event=>{entry.followUpDraft=event.target.value;host.querySelector('#follow-up-send').disabled=question.disabled||!entry.followUpDraft.trim();};
+    host.querySelector('#follow-up-form').onsubmit=event=>{event.preventDefault();if(!question.disabled&&question.value.trim())run('followUp',team,entry);};
+  }
   onContextChange?.(team,entry.matchday);
 }
 async function run(kind,team,entry) {
   if (pending) return;
-  const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday;
-  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 5 minuti.' : '';
+  const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday, question=(entry.followUpDraft??'').trim();
+  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.followUpError=''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 5 minuti.' : kind==='followUp'?'DeepSeek sta leggendo la proposta e la tua domanda. La risposta può richiedere fino a 5 minuti.':'';
   refresh();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, kind === 'research' ? 600000 : 300000);
@@ -103,6 +117,11 @@ async function run(kind,team,entry) {
       research.id=crypto.randomUUID();research.completedAt=new Date().toISOString();
       await persist('research',research);
       entry.notice = 'Ricerca salvata nel database e disponibile su tutti i dispositivi.';
+    } else if(kind==='followUp') {
+      const answer=await askFollowUp({key,team:snapshot,question,matchday,signal:controller.signal});
+      controller.signal.throwIfAborted();
+      await persist('followUp',{id:crypto.randomUUID(),createdAt:new Date().toISOString(),question,answer,recommendationId:snapshot.recommendation.id,previousFollowUpId:snapshot.recommendation.followUps?.at(-1)?.id??null,matchday});
+      entry.followUpDraft='';entry.notice='Risposta salvata con la proposta. La formazione non è stata modificata.';
     } else {
       const result = await analyzeSquad({key,team:snapshot,research:researchSnapshot,matchday,signal:controller.signal});
       controller.signal.throwIfAborted();
@@ -110,6 +129,7 @@ async function run(kind,team,entry) {
       entry.notice='Proposta salvata nel database e applicata al campo qui sotto.';
     }
   } catch (error) {
-    entry.error = controller.signal.aborted ? (timedOut ? 'Tempo massimo raggiunto.' : 'Richiesta annullata.') + ` I dati precedenti sono conservati. ${kind === 'analysis' ? 'La richiesta AI già inviata può consumare credito.' : 'Nessun credito consumato.'}` : error.message;
+    const message = controller.signal.aborted ? (timedOut ? 'Tempo massimo raggiunto.' : 'Richiesta annullata.') + ` I dati precedenti sono conservati. ${kind !== 'research' ? 'La richiesta AI già inviata può consumare credito.' : 'Nessun credito consumato.'}` : error.message;
+    if(kind==='followUp')entry.followUpError=message;else entry.error=message;
   } finally { clearTimeout(timer); pending = null; refresh(); }
 }

@@ -37,6 +37,7 @@
 .research-player { border-top: 1px solid #d6d6d0; padding: 12px 0; }
 .research-observation { padding: 8px 0; }
 .research-observation p { margin: 6px 0; }
+.follow-up{border-top:1px solid var(--line);margin-top:24px;padding-top:16px}.follow-up-history{list-style:none;padding:0;margin:0}.follow-up-history li{border:1px solid var(--line);border-radius:8px;padding:16px;margin:16px 0;background:#fafaf8}.follow-up-speaker{font:11px var(--mono);color:var(--muted);margin:0 0 8px}.follow-up-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:14px;margin:0 0 16px}.follow-up-text:last-child{margin-bottom:0}.follow-up textarea{resize:vertical;min-height:100px;line-height:1.6}.follow-up button{margin-top:8px}@media(max-width:600px){.follow-up button{width:100%}}
 .research-observation blockquote { margin: 0; padding: 12px; border-left: 2px solid #999; }
 .forecast-label { font-size: 11px; background: #ffe7b4; padding: 3px 6px; border-radius: 4px; }
 @media (max-width: 600px) { .research-step > button { width: 100%; } }
