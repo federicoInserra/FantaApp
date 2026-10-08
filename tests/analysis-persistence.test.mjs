@@ -15,7 +15,7 @@ function research(id='research-one',date=now.toISOString()){
  return {version:2,id,createdAt:date,completedAt:date,signature:squadSignature(team),matchday:'6',understat:understatSnapshot(normalizeLeague(rawLeague(),2026,now),team.players,now),players:[{id:'p1',name:'Player',club:'Inter',observations:[{field:'vote',value:'6',sourceId:'F1',quote,kind:'fact',period:'2026/2027',method:'structured',unit:'voto',updatedAt:''}]}],sources:[{id:'F1',title:'Fantacalcio',url:'https://www.fantacalcio.it/statistiche-serie-a',text:quote,retrievedAt:date}],warnings:[]};
 }
 function recommendation(data,id='recommendation-one'){
- return {version:1,id,text:'Proposta di test: 4-3-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
+ return {version:2,lineup:{formation:'3-4-3',starters:['p1'],bench:[]},id,text:'Proposta di test: 3-4-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
 }
 async function database(){
  const pg=new PGlite();const store=createTeamStore(async(strings,...values)=>{let text=strings[0];values.forEach((v,i)=>{text+=`$${i+1}`+strings[i+1]});return (await pg.query(text,values)).rows;});
@@ -29,7 +29,7 @@ test('research and recommendation survive a second device, overwrite in place, a
   await desktop.load();await desktop.save(state());
   let next=withAnalysisResult(desktop.state,team.id,'research',research(),analysisFingerprint(team));await desktop.save(next);
   next=withAnalysisResult(desktop.state,team.id,'recommendation',recommendation(research()),analysisFingerprint(team));await desktop.save(next);
-  await phone.load();assert.equal(phone.state.teams[0].research.id,'research-one');assert.equal(phone.state.teams[0].recommendation.createdAt,now.toISOString());
+  await phone.load();assert.equal(phone.state.teams[0].formation,'3-4-3');assert.deepEqual(phone.state.teams[0].recommendation.lineup,{formation:'3-4-3',starters:['p1'],bench:[]});assert.equal(phone.state.teams[0].research.id,'research-one');assert.equal(phone.state.teams[0].recommendation.createdAt,now.toISOString());
   const newer=research('research-two','2026-10-07T12:30:00.000Z');
   await desktop.save(withAnalysisResult(desktop.state,team.id,'research',newer,analysisFingerprint(team)));
   await phone.load();let saved=phone.state.teams[0];assert.equal(saved.research.id,'research-two');assert.equal(saved.recommendation.id,'recommendation-one');assert.ok(recommendationIsStale(saved.recommendation,saved,saved.research,'6'));
@@ -67,4 +67,24 @@ test('stored results whitelist fields and reject malformed timestamps, evidence 
  input.players[0].observations[0].quote='unsupported evidence';assert.throws(()=>storedResearch(input));
  const rec=recommendation(research());assert.throws(()=>storedRecommendation({...rec,text:'x'.repeat(80001)}));
  assert.ok(!JSON.stringify(storedRecommendation({...rec,apiKey:'secret',usage:{secret:'secret'}})).includes('secret'));
+ const legacy={...rec,version:1};delete legacy.lineup;assert.equal(storedRecommendation(legacy).text,legacy.text);
+ assert.throws(()=>storedRecommendation({...rec,lineup:{...rec.lineup,bench:['p1']}}));
+});
+test('invalid AI selection cannot replace the previous recommendation or saved module',()=>{
+ const saved=withAnalysisResult(state(),team.id,'research',research(),analysisFingerprint(team)),before=structuredClone(saved);
+ assert.throws(()=>withAnalysisResult(saved,team.id,'recommendation',{...recommendation(research()),lineup:{formation:'3-4-3',starters:['unknown'],bench:[]}},analysisFingerprint(team)),/non valida/);
+ assert.deepEqual(saved,before);
+});
+test('failed recommendation save requires a reload and preserves the last pitch and module in the database',async()=>{
+ const {pg,store,fetchImpl}=await database(),client=new DatabaseTeams({fetchImpl});
+ try{
+  await client.load();await client.save(withAnalysisResult(state(),team.id,'research',research(),analysisFingerprint(team)));
+  await client.save(withAnalysisResult(client.state,team.id,'recommendation',recommendation(research()),analysisFingerprint(team)));
+  client.fetchImpl=async()=>{throw Error('offline');};
+  const rec={...recommendation(research(),'lost'),lineup:{formation:'4-3-3',starters:['p1'],bench:[]}};
+  await assert.rejects(client.save(withAnalysisResult(client.state,team.id,'recommendation',rec,analysisFingerprint(team))));
+  assert.equal(client.ready,false);
+  assert.equal((await store.read()).state.teams[0].formation,'3-4-3');
+  client.fetchImpl=fetchImpl;await client.load();assert.equal(client.state.teams[0].formation,'3-4-3');assert.equal(client.state.teams[0].recommendation.id,'recommendation-one');
+ }finally{await pg.close();}
 });

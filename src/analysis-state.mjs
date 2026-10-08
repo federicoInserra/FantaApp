@@ -1,6 +1,7 @@
 import {teamRules} from './rules.mjs';
-import {validateExtraction} from './research.mjs';
+import {validateExtraction,staleReason} from './research.mjs';
 import {validUnderstatSnapshot} from './understat.mjs';
+import {storedLineup,validateLineup,suggestLineup} from './lineup.mjs';
 const pick=(o,keys)=>Object.fromEntries(keys.filter(k=>o?.[k]!==undefined).map(k=>[k,o[k]]));
 const text=(v,max)=>typeof v==='string'&&v.length<=max;
 const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)&&Number.isFinite(Date.parse(v));
@@ -35,11 +36,25 @@ export function storedResearch(data){
   return structuredClone(result);
 }
 export function storedRecommendation(data){
-  if(data?.version!==1||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
-  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),sources:data.sources.map(sourceMetadata)});
+  if(![1,2].includes(data?.version)||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
+  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(data.version===2?{lineup:storedLineup(data.lineup)}:{}),sources:data.sources.map(sourceMetadata)});
 }
 export function recommendationIsStale(recommendation,team,research,matchday){
   return !research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;
+}
+export function formationView(team,matchday=team.research?.matchday??'',now=Date.now()){
+  const rec=team.recommendation;
+  let reason='';
+  if(rec){
+    if(recommendationIsStale(rec,team,team.research,matchday)||staleReason(team.research,team,matchday,now))reason='La proposta DeepSeek è superata. Generane una nuova con dati aggiornati.';
+    else if(!rec.lineup)reason='La proposta precedente contiene solo testo. Generane una nuova per visualizzarla sul campo.';
+    else if(team.formation!==rec.lineup.formation)reason='Hai scelto un modulo diverso dalla proposta DeepSeek. Il campo mostra una bozza indicativa.';
+    else{
+      try{return {...validateLineup(rec.lineup,team.players),ai:true,reason:''};}
+      catch{reason='La formazione salvata non corrisponde alla rosa. Genera una nuova proposta.';}
+    }
+  }
+  return {...suggestLineup(team.players,team.formation),formation:team.formation,bench:[],ai:false,reason};
 }
 // Update only this team's latest result; existing recommendation stays visible after new research.
 export function withAnalysisResult(state,teamId,kind,result,expectedFingerprint){
@@ -50,6 +65,11 @@ export function withAnalysisResult(state,teamId,kind,result,expectedFingerprint)
   else if(kind==='recommendation'){
     const recommendation=storedRecommendation(result);
     if(recommendation.researchId!==team.research?.id)throw new Error('I dati della ricerca sono cambiati. Ripeti l’analisi.');
+    if(recommendation.teamFingerprint!==expectedFingerprint)fail();
+    if(recommendation.lineup){
+      validateLineup(recommendation.lineup,team.players);
+      team.formation=recommendation.lineup.formation;
+    }
     team.recommendation=recommendation;
   }else fail();
   return next;

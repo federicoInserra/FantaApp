@@ -3,7 +3,8 @@ import { DatabaseTeams } from './cloud-sync.mjs';
 import { RULE_GROUPS, teamRules } from './rules.mjs';
 import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
-import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
+import { ROLES } from './lineup.mjs';
+import {renderFormationLayout} from './formation-view.mjs';
 
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
@@ -41,7 +42,6 @@ async function save() {
 }
 function activeTeam() { return state.teams.find(team => team.id === state.activeTeamId) ?? state.teams[0]; }
 function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
-function formatScore(value) { return value == null ? '—' : Number(value).toFixed(1).replace('.', ','); }
 function button(label, action, className = 'button button-primary') { return `<button class="${className}" type="button" data-action="${action}">${label}</button>`; }
 function roleBadge(role) { return `<span class="role-badge role-${role}">${role}</span>`; }
 function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><${page === 'panoramica' ? 'h1' : 'h2'}>${title}</${page === 'panoramica' ? 'h1' : 'h2'}><p class="heading-description">${description}</p></div>${action}</div>`; }
@@ -71,11 +71,8 @@ function renderRoster(team) {
 }
 
 function renderFormation(team) {
-  const lineup = suggestLineup(team.players, team.formation);
-  const count = Object.values(lineup.starters).flat().length;
   return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}
-    <div id="ai-analysis"></div><div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
-    <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
+    <div id="ai-analysis"></div><div id="formation-view">${renderFormationLayout(team)}</div>`;
 }
 
 function renderRules(team) {
@@ -164,6 +161,10 @@ document.addEventListener('click', async event => {
   if (action === 'new-player') openCatalog();
   if (action === 'go-formation') navigate('formazione');
   if (action === 'go-roster') navigate('rosa');
+  if (action === 'restore-recommendation') {
+    activeTeam().formation=activeTeam().recommendation.lineup.formation;
+    await save();render();
+  }
   if (action === 'player-details') showPlayer(id);
   if (action === 'clear-filters') { roleFilter = 'Tutti'; rosterQuery = ''; render(); document.querySelector('#roster-search')?.focus(); }
   if (action === 'toggle-player') {
@@ -202,7 +203,10 @@ document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEve
 
 app.addEventListener('change', async event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; await save(); render(); } });
 window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
-setupAnalysis({saveResult:async(teamId,kind,result,expectedFingerprint)=>{
+setupAnalysis({onContextChange:(team,matchday)=>{
+  const host=document.querySelector('#formation-view');
+  if(host&&page==='formazione'&&activeTeam()?.id===team.id)host.innerHTML=renderFormationLayout(team,matchday);
+},saveResult:async(teamId,kind,result,expectedFingerprint)=>{
   const next=withAnalysisResult(state,teamId,kind,result,expectedFingerprint);
   if(cloud.busy||!cloud.ready)throw new Error('Database occupato o non disponibile. Ricarica le squadre.');
   state=next;

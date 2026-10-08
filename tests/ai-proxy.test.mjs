@@ -13,7 +13,7 @@ test('server status reports booleans only, with no cached credentials',async()=>
 test('proxy injects only the selected server credential and strips credential echoes',async()=>{
  let calls=0;
  const r=await handleAI(request('fireworks',body,{Authorization:'Bearer browser-secret'}),{env,fetchImpl:async(url,options)=>{
-  calls++;assert.equal(url,ENDPOINT);assert.equal(options.headers.Authorization,`Bearer ${env.FIREWORKS_API_KEY}`);assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,undefined);assert.deepEqual(JSON.parse(options.body),{...body,reasoning:{effort:'low'}});
+  calls++;assert.equal(url,ENDPOINT);assert.equal(options.headers.Authorization,`Bearer ${env.FIREWORKS_API_KEY}`);assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,undefined);assert.deepEqual(JSON.parse(options.body),{...body,reasoning:{effort:'high'}});
   return Response.json({output:env.FIREWORKS_API_KEY});
  }});
  assert.equal(calls,1);assert.equal(r.status,200);assert.equal((await r.json()).output,'[redacted]');
@@ -24,7 +24,7 @@ test('proxy rejects cross-site calls, tools, arbitrary models, excessive tokens 
  for(const payload of [{...body,tools:[{type:'web_search'}]},{...body,model:'expensive-model'},{...body,max_output_tokens:131073},{...body,model:'accounts/fireworks/models/glm-5p3-flash',max_output_tokens:6001}]) assert.equal((await handleAI(request('fireworks',payload),options)).status,400);
  assert.equal((await handleAI(request('fireworks',{...body,max_output_tokens:131072,reasoning:{effort:'max'}}),{env,fetchImpl:async(_url,options)=>{
   assert.equal(JSON.parse(options.body).max_output_tokens,131072);
-  assert.deepEqual(JSON.parse(options.body).reasoning,{effort:'low'});
+  assert.deepEqual(JSON.parse(options.body).reasoning,{effort:'high'});
   return Response.json({status:'completed'});
  }})).status,200);
  assert.equal((await handleAI(request('extract',{urls:['http://127.0.0.1/']}),options)).status,400);

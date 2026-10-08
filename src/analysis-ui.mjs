@@ -17,11 +17,12 @@ if (HOSTED_API) {
   try { localStorage.removeItem(API_KEY_STORAGE); localStorage.removeItem(TAVILY_KEY_STORAGE); } catch { /* Never used even if removal fails. */ }
 }
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-let saveResult;
+let saveResult,onContextChange;
 const fingerprint = analysisFingerprint;
 const dateLabel = date => new Date(date).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
 export function setupAnalysis(options = {}) {
   saveResult=options.saveResult;
+  onContextChange=options.onContextChange;
   if (HOSTED_API) {
     getAIStatus({signal:AbortSignal.timeout(10000)})
       .then(value=>{serverStatus=value;refresh();})
@@ -71,10 +72,12 @@ function refresh() {
     host.querySelector('#ai-analyze').disabled = Boolean(pending || !fireworksReady() || reason);
     const warning=host.querySelector('#recommendation-stale');
     if(warning)warning.hidden=!(recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason);
+    onContextChange?.(team,entry.matchday);
   };
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);
   host.querySelector('#ai-analyze').onclick = () => run('analysis',team,entry);
+  onContextChange?.(team,entry.matchday);
 }
 async function run(kind,team,entry) {
   if (pending) return;
@@ -103,8 +106,8 @@ async function run(kind,team,entry) {
     } else {
       const result = await analyzeSquad({key,team:snapshot,research:researchSnapshot,matchday,signal:controller.signal});
       controller.signal.throwIfAborted();
-      await persist('recommendation',{version:1,id:crypto.randomUUID(),text:result.text,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
-      entry.notice='Proposta salvata nel database e disponibile su tutti i dispositivi.';
+      await persist('recommendation',{version:2,id:crypto.randomUUID(),text:result.text,lineup:result.lineup,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
+      entry.notice='Proposta salvata nel database e applicata al campo qui sotto.';
     }
   } catch (error) {
     entry.error = controller.signal.aborted ? (timedOut ? 'Tempo massimo raggiunto.' : 'Richiesta annullata.') + ` I dati precedenti sono conservati. ${kind === 'analysis' ? 'La richiesta AI già inviata può consumare credito.' : 'Nessun credito consumato.'}` : error.message;
