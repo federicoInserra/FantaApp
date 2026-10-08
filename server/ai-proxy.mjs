@@ -37,10 +37,11 @@ export function providerRequest(action, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('payload');
   if (action === 'fireworks') {
     const allowed = ['model','store','max_output_tokens','instructions','input','reasoning','text'];
-    const maxOutputTokens = body.model === MODELS[0] ? 36000 : 6000;
+    const maxOutputTokens = body.model === MODELS[0] ? 131072 : 6000;
     if (Object.keys(body).some(k => !allowed.includes(k)) || !MODELS.includes(body.model) || !string(body.instructions, 20000) || !string(body.input, 450000) || body.store !== false || !Number.isInteger(body.max_output_tokens) || body.max_output_tokens < 1 || body.max_output_tokens > maxOutputTokens) throw new Error('payload');
     // Reconstruct the request: callers cannot enable tools, storage, streaming or arbitrary models.
     const result = {model:body.model, instructions:body.instructions, input:body.input, store:false, max_output_tokens:body.max_output_tokens};
+    if (body.model === MODELS[0]) result.reasoning = {effort:'low'};
     if (body.model === MODELS[1]) Object.assign(result, {reasoning:{effort:'low'},text:{format:{type:'json_object'}}});
     return {url:FIREWORKS, keyName:'FIREWORKS_API_KEY', body:result};
   }

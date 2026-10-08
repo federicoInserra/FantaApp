@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {handleAI} from '../server/ai-proxy.mjs';
+import {handleAI,aiDiagnostics} from '../server/ai-proxy.mjs';
 import {postJSON, ENDPOINT, getAIStatus} from '../src/ai-api.mjs';
 const env={FIREWORKS_API_KEY:'server-fireworks-test-secret',TAVILY_API_KEY:'server-tavily-test-secret'};
 const body={model:'accounts/fireworks/models/deepseek-v4p1-flash',store:false,max_output_tokens:6000,instructions:'Choose the formation',input:'{}'};
@@ -13,7 +13,7 @@ test('server status reports booleans only, with no cached credentials',async()=>
 test('proxy injects only the selected server credential and strips credential echoes',async()=>{
  let calls=0;
  const r=await handleAI(request('fireworks',body,{Authorization:'Bearer browser-secret'}),{env,fetchImpl:async(url,options)=>{
-  calls++;assert.equal(url,ENDPOINT);assert.equal(options.headers.Authorization,`Bearer ${env.FIREWORKS_API_KEY}`);assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,undefined);assert.deepEqual(JSON.parse(options.body),body);
+  calls++;assert.equal(url,ENDPOINT);assert.equal(options.headers.Authorization,`Bearer ${env.FIREWORKS_API_KEY}`);assert.equal(options.redirect,'error');assert.equal(options.headers.Cookie,undefined);assert.deepEqual(JSON.parse(options.body),{...body,reasoning:{effort:'low'}});
   return Response.json({output:env.FIREWORKS_API_KEY});
  }});
  assert.equal(calls,1);assert.equal(r.status,200);assert.equal((await r.json()).output,'[redacted]');
@@ -21,14 +21,25 @@ test('proxy injects only the selected server credential and strips credential ec
 test('proxy rejects cross-site calls, tools, arbitrary models, excessive tokens and URLs before fetching',async()=>{
  const options={env,fetchImpl:()=>{throw new Error('must not fetch');}};
  assert.equal((await handleAI(request('fireworks',body,{Origin:'https://evil.example'}),options)).status,403);
- for(const payload of [{...body,tools:[{type:'web_search'}]},{...body,model:'expensive-model'},{...body,max_output_tokens:36001},{...body,model:'accounts/fireworks/models/glm-5p3-flash',max_output_tokens:6001}]) assert.equal((await handleAI(request('fireworks',payload),options)).status,400);
- assert.equal((await handleAI(request('fireworks',{...body,max_output_tokens:36000}),{env,fetchImpl:async(_url,options)=>{
-  assert.equal(JSON.parse(options.body).max_output_tokens,36000);
+ for(const payload of [{...body,tools:[{type:'web_search'}]},{...body,model:'expensive-model'},{...body,max_output_tokens:131073},{...body,model:'accounts/fireworks/models/glm-5p3-flash',max_output_tokens:6001}]) assert.equal((await handleAI(request('fireworks',payload),options)).status,400);
+ assert.equal((await handleAI(request('fireworks',{...body,max_output_tokens:131072,reasoning:{effort:'max'}}),{env,fetchImpl:async(_url,options)=>{
+  assert.equal(JSON.parse(options.body).max_output_tokens,131072);
+  assert.deepEqual(JSON.parse(options.body).reasoning,{effort:'low'});
   return Response.json({status:'completed'});
  }})).status,200);
  assert.equal((await handleAI(request('extract',{urls:['http://127.0.0.1/']}),options)).status,400);
  assert.equal((await handleAI(request('search',{query:'football',include_domains:['evil.example']}),options)).status,400);
  assert.equal((await handleAI(request('fireworks',{...body,input:'a'.repeat(520000)}),options)).status,413);
+});
+test('diagnostics distinguish requested budget, provider cap, reasoning and visible answer without leaking content',async()=>{
+ const data={status:'incomplete',max_output_tokens:2048,incomplete_details:{reason:'max_output_tokens'},usage:{input_tokens:17000,output_tokens:2048,output_tokens_details:{reasoning_tokens:2048}},output:[{type:'reasoning',content:[{type:'reasoning_text',text:'private thoughts'}]}],instructions:'private prompt'};
+ assert.deepEqual(aiDiagnostics(data,{...body,max_output_tokens:36000},12500),{model:body.model,status:'incomplete',reason:'max_output_tokens',requestedMaxOutputTokens:36000,reportedMaxOutputTokens:2048,inputTokens:17000,outputTokens:2048,reasoningTokens:2048,answerCharacters:0,elapsedMs:12500});
+ const logs=[];
+ const response=await handleAI(request(),{env,logImpl:(...args)=>logs.push(args),fetchImpl:async()=>Response.json(data)});
+ assert.equal(response.status,200);assert.equal(logs.length,1);
+ assert.equal(JSON.stringify(logs).includes('private'),false);
+ const malicious={status:env.FIREWORKS_API_KEY,incomplete_details:{reason:env.FIREWORKS_API_KEY},usage:{input_tokens:env.FIREWORKS_API_KEY,output_tokens:-1},output:[{type:'message',role:'assistant',content:[{type:'output_text',text:env.FIREWORKS_API_KEY}]}]};
+ assert.equal(JSON.stringify(aiDiagnostics(malicious,body,100)).includes(env.FIREWORKS_API_KEY),false);
 });
 test('Tavily proxy fixes budget options and uses only Tavily credentials',async()=>{
  for(const action of ['search','extract']){

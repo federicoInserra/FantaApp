@@ -24,12 +24,16 @@ export async function postJSON(url, key, body, { signal, fetchImpl = fetch, prov
 export function responseText(data) {
   if (data?.status !== 'completed') {
     const reason = data?.incomplete_details?.reason;
+    const outputTokens = data?.usage?.output_tokens, reasoningTokens = data?.usage?.output_tokens_details?.reasoning_tokens;
+    const validCount = value => Number.isSafeInteger(value) && value >= 0;
+    const tokenDetail = reason === 'max_output_tokens' && validCount(outputTokens)
+      ? ` Token generati: ${outputTokens.toLocaleString('it-IT')}${validCount(reasoningTokens) && reasoningTokens <= outputTokens ? ` (ragionamento: ${reasoningTokens.toLocaleString('it-IT')})` : ''}.` : '';
     const detail = reason === 'max_output_tokens' ? 'DeepSeek ha raggiunto il limite di token della risposta.'
       : reason === 'content_filter' ? 'Il provider ha interrotto la risposta per il filtro dei contenuti.'
       : reason === 'max_tool_calls' ? 'Il provider ha raggiunto il limite di chiamate agli strumenti.'
       : data?.status === 'failed' ? 'Il provider ha segnalato un errore.'
       : 'Il provider ha interrotto la risposta senza indicare il motivo.';
-    throw new Error(`Analisi non completata. ${detail} I risultati parziali non sono stati applicati.`);
+    throw new Error(`Analisi non completata. ${detail}${tokenDetail} I risultati parziali non sono stati applicati.`);
   }
   const text = (data.output ?? []).filter(item => item.type === 'message' && item.role === 'assistant')
     .flatMap(item => item.content ?? []).filter(part => part.type === 'output_text' && typeof part.text === 'string').map(part => part.text).join('\n');
