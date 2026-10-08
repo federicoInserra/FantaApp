@@ -1,3 +1,4 @@
+import {AI_MODELS,DEFAULT_MODEL,modelInfo,usageLabel} from './ai-models.mjs';
 import {analysisFingerprint,recommendationIsStale} from './analysis-state.mjs';
 import {coverageOf} from './primary-research.mjs';
 import { getAIStatus } from './ai-api.mjs';
@@ -32,7 +33,7 @@ export function setupAnalysis(options = {}) {
 }
 function hydrate(team) {
   let entry=analyses.get(team.id);
-  if(!entry){entry={matchday:team.research?.matchday??''};analyses.set(team.id,entry);}
+  if(!entry){entry={matchday:team.research?.matchday??'',model:team.recommendation?.model??DEFAULT_MODEL};analyses.set(team.id,entry);}
   if(entry.research?.id!==team.research?.id)entry.matchday=team.research?.matchday??'';
   if(entry.recommendation?.id!==team.recommendation?.id){entry.followUpDraft='';entry.followUpError='';}
   entry.research=team.research??null;entry.recommendation=team.recommendation??null;
@@ -62,11 +63,11 @@ function refresh() {
     <label for="ai-matchday">Giornata da preparare</label><input id="ai-matchday" maxlength="120" placeholder="Prossima giornata non ancora iniziata" value="${escape(entry.matchday)}" ${pending ? 'disabled' : ''}>
     <div class="research-step"><h3><span>01</span> Aggiorna i dati</h3><p class="field-hint">Voti, fantamedia e probabili formazioni da Fantacalcio; xG e xA da Understat. Dati recuperati direttamente dalle fonti, senza chiamate AI. L’ultima ricerca è salvata nel database e disponibile su tutti i tuoi dispositivi. Ogni aggiornamento sostituisce il precedente.</p><button id="ai-research" class="button button-primary" ${pending || !understatURL || !team.players.length ? 'disabled' : ''}>${busy && pending.kind === 'research' ? 'Aggiornamento in corso…' : 'Aggiorna dati'}</button></div>
     ${understatView(entry.research?.understat)}${dataView(entry.research)}<p id="research-warning" class="field-hint">${escape(reason)}</p>
-    <div class="research-step"><h3><span>02</span> Scegli la formazione</h3><p class="field-hint">DeepSeek usa i dati salvati, senza nuove ricerche. <a href="#regole/${encodeURIComponent(team.id)}">Modifica regole</a></p><button id="ai-analyze" class="button button-outline" ${pending || !fireworksReady() || reason ? 'disabled' : ''}>${busy && pending.kind === 'analysis' ? 'Analisi in corso…' : 'Suggerisci formazione'}</button></div>
+    <div class="research-step"><h3><span>02</span> Scegli la formazione</h3><p class="field-hint">Il modello scelto usa lo stesso prompt e i dati salvati, senza nuove ricerche. <a href="#regole/${encodeURIComponent(team.id)}">Modifica regole</a></p><label for="ai-model">Modello AI</label><select id="ai-model" ${pending?'disabled':''}>${AI_MODELS.map(model=>`<option value="${model.id}" ${model.id===entry.model?'selected':''}>${model.label}</option>`).join('')}</select><p class="field-hint">La nuova proposta sostituisce la precedente. Il costo stimato apparirà dopo la risposta, in USD. Kimi ha tariffe più alte. La stima usa i token riportati e le tariffe standard del 08/10/2026, senza imposte o accordi personalizzati. <a href="${modelInfo(entry.model).url}" target="_blank" rel="noopener noreferrer">Tariffe Fireworks</a></p><button id="ai-analyze" class="button button-outline" ${pending || !fireworksReady() || reason ? 'disabled' : ''}>${busy && pending.kind === 'analysis' ? 'Analisi in corso…' : 'Suggerisci formazione'}</button></div>
     <div class="ai-actions">${busy && pending.phase !== 'saving' ? '<button id="ai-cancel" class="button button-outline">Annulla</button>' : ''}</div>
-    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() ? (HOSTED_API ? 'DeepSeek non disponibile. Puoi comunque aggiornare i dati.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
+    <p id="ai-progress" role="status">${escape(busy ? entry.progress || 'Richiesta in corso…' : pending ? 'È in corso una richiesta per un’altra squadra.' : !fireworksReady() ? (HOSTED_API ? 'Servizio AI non disponibile. Puoi comunque aggiornare i dati.' : 'Servizi AI non configurati.') : !understatURL ? 'Servizio Understat non configurato.' : entry.notice || '')}</p>
     ${entry.error ? `<p class="import-error" role="alert">${escape(entry.error)}</p>` : ''}
-    ${entry.recommendation ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">Ultima proposta: ${escape(dateLabel(entry.recommendation.createdAt))} · salvata nel database<br>Dati della ricerca: ${escape(dateLabel(entry.recommendation.researchAt))} · ${escape(entry.recommendation.matchday || 'Prossima giornata')} · Da verificare prima della consegna.</p><p id="recommendation-stale" class="import-error" ${recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason?'':'hidden'}>Questa proposta è superata. Generane una nuova con dati aggiornati.</p><div class="ai-result-text">${escape(entry.recommendation.text)}</div><details><summary>Fonti di questa proposta</summary><ul>${entry.recommendation.sources.map(source=>`<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details><p class="field-hint">Ogni nuova proposta sostituisce la precedente. La rosa non è stata modificata.</p>${renderFollowUp(team,{matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''})}</section>` : ''}</section>`;
+    ${entry.recommendation ? `<section class="ai-result"><h3>Proposta di formazione</h3><p class="field-hint">Modello: ${modelInfo(entry.recommendation.model??DEFAULT_MODEL).label}<br>${escape(usageLabel(entry.recommendation.aiUsage))}<br>Ultima proposta: ${escape(dateLabel(entry.recommendation.createdAt))} · salvata nel database<br>Dati della ricerca: ${escape(dateLabel(entry.recommendation.researchAt))} · ${escape(entry.recommendation.matchday || 'Prossima giornata')} · Da verificare prima della consegna.</p><p id="recommendation-stale" class="import-error" ${recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason?'':'hidden'}>Questa proposta è superata. Generane una nuova con dati aggiornati.</p><div class="ai-result-text">${escape(entry.recommendation.text)}</div><details><summary>Fonti di questa proposta</summary><ul>${entry.recommendation.sources.map(source=>`<li><a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">[${escape(source.id)}] ${escape(source.title)}</a></li>`).join('')}</ul></details><p class="field-hint">Ogni nuova proposta sostituisce la precedente. La rosa non è stata modificata.</p>${renderFollowUp(team,{matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''})}</section>` : ''}</section>`;
   host.querySelector('#ai-matchday').oninput = event => {
     entry.matchday = event.target.value;
     const reason = staleReason(entry.research,team,entry.matchday);
@@ -85,6 +86,7 @@ function refresh() {
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);
+  host.querySelector('#ai-model').onchange=event=>{entry.model=event.target.value;refresh();};
   host.querySelector('#ai-analyze').onclick = () => run('analysis',team,entry);
   const question=host.querySelector('#follow-up-question');
   if(question){
@@ -95,8 +97,8 @@ function refresh() {
 }
 async function run(kind,team,entry) {
   if (pending) return;
-  const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday, question=(entry.followUpDraft??'').trim();
-  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.followUpError=''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 5 minuti.' : kind==='followUp'?'DeepSeek sta leggendo la proposta e la tua domanda. La risposta può richiedere fino a 5 minuti.':'';
+  const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday, question=(entry.followUpDraft??'').trim(), model=entry.model??DEFAULT_MODEL, label=modelInfo(kind==='followUp'?(snapshot.recommendation?.model??DEFAULT_MODEL):model).label;
+  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.followUpError=''; entry.notice = ''; entry.progress = kind === 'analysis' ? `${label} sta preparando la proposta. La richiesta può durare fino a 5 minuti.` : kind==='followUp'?`${label} sta leggendo la proposta e la tua domanda. La risposta può richiedere fino a 5 minuti.`:'';
   refresh();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, kind === 'research' ? 600000 : 300000);
@@ -118,14 +120,14 @@ async function run(kind,team,entry) {
       await persist('research',research);
       entry.notice = 'Ricerca salvata nel database e disponibile su tutti i dispositivi.';
     } else if(kind==='followUp') {
-      const answer=await askFollowUp({key,team:snapshot,question,matchday,signal:controller.signal});
+      const result=await askFollowUp({key,team:snapshot,question,matchday,signal:controller.signal,includeUsage:true});
       controller.signal.throwIfAborted();
-      await persist('followUp',{id:crypto.randomUUID(),createdAt:new Date().toISOString(),question,answer,recommendationId:snapshot.recommendation.id,previousFollowUpId:snapshot.recommendation.followUps?.at(-1)?.id??null,matchday});
+      await persist('followUp',{id:crypto.randomUUID(),createdAt:new Date().toISOString(),question,answer:result.answer,model:result.model,aiUsage:result.aiUsage,recommendationId:snapshot.recommendation.id,previousFollowUpId:snapshot.recommendation.followUps?.at(-1)?.id??null,matchday});
       entry.followUpDraft='';entry.notice='Risposta salvata con la proposta. La formazione non è stata modificata.';
     } else {
-      const result = await analyzeSquad({key,team:snapshot,research:researchSnapshot,matchday,signal:controller.signal});
+      const result = await analyzeSquad({key,team:snapshot,research:researchSnapshot,matchday,model,signal:controller.signal});
       controller.signal.throwIfAborted();
-      await persist('recommendation',{version:2,id:crypto.randomUUID(),text:result.text,lineup:result.lineup,forecast:result.forecast,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
+      await persist('recommendation',{version:2,id:crypto.randomUUID(),text:result.text,model:result.model,aiUsage:result.aiUsage,lineup:result.lineup,forecast:result.forecast,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
       entry.notice='Proposta salvata nel database e applicata al campo qui sotto.';
     }
   } catch (error) {

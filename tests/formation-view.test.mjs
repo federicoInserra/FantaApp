@@ -33,7 +33,7 @@ test('changed matchday, roster, rules, research or expired data never displays t
   t=team();t.rules=['New rules'];changed.push(t);
   t=team();t.research.id='new';changed.push(t);
   t=team();t.research.createdAt=new Date(now-7*3600000).toISOString();changed.push(t);
-  for(t of changed){assert.equal(formationView(t,'8',now).ai,false);assert.match(renderFormationLayout(t,'8',now),/proposta DeepSeek è superata/);assert.doesNotMatch(renderFormationLayout(t,'8',now),/Previsione fantapunti/);}
+  for(t of changed){assert.equal(formationView(t,'8',now).ai,false);assert.match(renderFormationLayout(t,'8',now),/proposta AI è superata/);assert.doesNotMatch(renderFormationLayout(t,'8',now),/Previsione fantapunti/);}
   assert.equal(formationView(team(),'9',now).ai,false);
 });
 test('legacy text-only and malformed saved lineups stay readable without silently applying a guessed lineup',()=>{

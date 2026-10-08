@@ -11,7 +11,7 @@ export const FORMATIONS = {
 
 export const ROLES = { P: 'Portieri', D: 'Difensori', C: 'Centrocampisti', A: 'Attaccanti' };
 
-const invalidLineup = () => { throw new Error('Formazione DeepSeek non valida. La proposta precedente è stata conservata. Riprova l’analisi.'); };
+const invalidLineup = () => { throw new Error('Formazione AI non valida. La proposta precedente è stata conservata. Riprova l’analisi.'); };
 // Shape validation also works for saved recommendations whose roster has since changed.
 export function storedLineup(data) {
   const ids = (value, max) => Array.isArray(value) && value.length <= max && value.every(id => typeof id === 'string' && id.length > 0 && id.length <= 150);

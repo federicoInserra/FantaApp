@@ -1,4 +1,4 @@
-const invalid=()=>{throw new Error('Previsione DeepSeek non valida. La proposta precedente è stata conservata. Riprova l’analisi.');};
+const invalid=()=>{throw new Error('Previsione AI non valida. La proposta precedente è stata conservata. Riprova l’analisi.');};
 const text=(value,max)=>typeof value==='string'&&value.trim().length>0&&value.length<=max;
 const number=(value,min,max)=>typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max;
 export const rounded=value=>Math.round((value+Number.EPSILON)*10)/10;

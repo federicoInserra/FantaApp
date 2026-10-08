@@ -28,7 +28,7 @@ export function responseText(data) {
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     const tokenDetail = reason === 'max_output_tokens' && validCount(outputTokens)
       ? ` Token generati: ${outputTokens.toLocaleString('it-IT')}${validCount(reasoningTokens) && reasoningTokens <= outputTokens ? ` (ragionamento: ${reasoningTokens.toLocaleString('it-IT')})` : ''}.` : '';
-    const detail = reason === 'max_output_tokens' ? 'DeepSeek ha raggiunto il limite di token della risposta.'
+    const detail = reason === 'max_output_tokens' ? 'AI ha raggiunto il limite di token della risposta.'
       : reason === 'content_filter' ? 'Il provider ha interrotto la risposta per il filtro dei contenuti.'
       : reason === 'max_tool_calls' ? 'Il provider ha raggiunto il limite di chiamate agli strumenti.'
       : data?.status === 'failed' ? 'Il provider ha segnalato un errore.'

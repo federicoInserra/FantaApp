@@ -1,3 +1,4 @@
+import {AI_MODELS,estimateUsage} from '../src/ai-models.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
@@ -17,7 +18,7 @@ function research(id='research-one',date=now.toISOString()){
 }
 function recommendation(data,id='recommendation-one'){
  const lineup={formation:'3-4-3',starters:['p1'],bench:[]};
- return {version:2,lineup,forecast:forecastFor(lineup),id,text:'Proposta di test: 3-4-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
+ return {version:2,model:AI_MODELS[1].id,aiUsage:estimateUsage(AI_MODELS[1].id,{input_tokens:10000,output_tokens:5000,input_tokens_details:{cached_tokens:4000}}),lineup,forecast:forecastFor(lineup),id,text:'Proposta di test: 3-4-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
 }
 async function database(){
  const pg=new PGlite();const store=createTeamStore(async(strings,...values)=>{let text=strings[0];values.forEach((v,i)=>{text+=`$${i+1}`+strings[i+1]});return (await pg.query(text,values)).rows;});
@@ -37,7 +38,7 @@ test('research and recommendation survive a second device, overwrite in place, a
   await phone.load();let saved=phone.state.teams[0];assert.equal(saved.research.id,'research-two');assert.equal(saved.recommendation.id,'recommendation-one');assert.ok(recommendationIsStale(saved.recommendation,saved,saved.research,'6'));
   await desktop.save(withAnalysisResult(desktop.state,team.id,'recommendation',recommendation(newer,'recommendation-two'),analysisFingerprint(team)));
   await phone.load();saved=phone.state.teams[0];assert.equal(saved.recommendation.researchId,'research-two');assert.equal(saved.recommendation.id,'recommendation-two');assert.equal(recommendationIsStale(saved.recommendation,saved,saved.research,'6'),false);
-  assert.deepEqual(saved.recommendation.forecast,recommendation(newer).forecast);
+  assert.deepEqual(saved.recommendation.forecast,recommendation(newer).forecast);assert.equal(saved.recommendation.model,AI_MODELS[1].id);assert.deepEqual(saved.recommendation.aiUsage,recommendation(newer).aiUsage);
   const raw=(await pg.query('SELECT state FROM fantaapp_workspace')).rows[0].state;
   assert.ok(!JSON.stringify(raw).includes('research-one'));assert.ok(!JSON.stringify(raw).includes('recommendation-one'));assert.equal(Array.isArray(raw.teams[0].research),false);
   // Ordinary roster edits retain the latest results, while marking the recommendation stale.
