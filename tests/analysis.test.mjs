@@ -76,7 +76,7 @@ test('completed structured response generates readable lineup text from the same
  const output=result=>({status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:result}]}]});
  const data={...lineup,forecast:forecastFor(lineup),analysis:'Ballottaggi da verificare [S1].'};
  const result=parseResponse(output(JSON.stringify(data)),research,{players});
- assert.deepEqual(result.lineup,lineup);assert.match(result.text,/Difensori: D Giocatore 0/);assert.match(result.text,/1\. A Giocatore 3/);
+ assert.deepEqual(result.lineup,lineup);assert.match(result.text,/Difensori: D Giocatore 0/);assert.match(result.text,/4\. A Giocatore 3/);
  assert.deepEqual(result.forecast,data.forecast);assert.match(result.text,/71,4 fantapunti/);
  const sourced={...research,players:[{id:'D0',observations:[{field:'opponent',value:'Parma'}]}]};assert.match(parseResponse(output(JSON.stringify(data)),sourced,{players}).text,/D Giocatore 0 \(vs Parma\)/);
  assert.deepEqual(parseResponse(output('```json\n'+JSON.stringify(data)+'\n```'),research,{players}),result);

@@ -11,6 +11,11 @@ export const FORMATIONS = {
 
 export const ROLES = { P: 'Portieri', D: 'Difensori', C: 'Centrocampisti', A: 'Attaccanti' };
 
+// Group roles while preserving the model's priority within each role.
+export function benchByRole(players) {
+  return Object.keys(ROLES).flatMap(role => players.filter(player => player.role === role));
+}
+
 const invalidLineup = () => { throw new Error('Formazione AI non valida. La proposta precedente è stata conservata. Riprova l’analisi.'); };
 // Shape validation also works for saved recommendations whose roster has since changed.
 export function storedLineup(data) {

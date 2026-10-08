@@ -13,9 +13,9 @@ function team(){
 }
 test('the pitch shows the exact saved AI starters and ordered bench with their full roster names',()=>{
   const html=renderFormationLayout(team(),'8',now);
-  assert.match(html,/PROPOSTA DEEPSEEK/);assert.match(html,/4-3-3/);assert.match(html,/11\/11/);
+  assert.match(html,/PROPOSTA AI/);assert.match(html,/4-3-3/);assert.match(html,/11\/11/);
   const ids=[...html.matchAll(/data-player-id="([^"]+)"/g)].map(m=>m[1]);
-  assert.deepEqual(ids,[...['A','C','D','P'].flatMap(role=>lineup.starters.filter(id=>id.startsWith(role))),...lineup.bench]);
+  assert.deepEqual(ids,[...['A','C','D','P'].flatMap(role=>lineup.starters.filter(id=>id.startsWith(role))),...['P','D','C','A'].flatMap(role=>lineup.bench.filter(id=>id.startsWith(role)))]);
   assert.match(html,/D Giocatore 0/);assert.doesNotMatch(html,/Punteggio demo/);
   assert.match(html,/71,4/);assert.match(html,/Previsione fantapunti/);assert.equal([...html.matchAll(/data-origin="pitch"/g)].length,11);
   assert.match(html,/<button type="button" class="pitch-player"/);
@@ -44,4 +44,13 @@ test('legacy text-only and malformed saved lineups stay readable without silentl
 test('roster names are escaped in both pitch and bench',()=>{
   const t=team();t.players[0].name='<script>test</script>';t.players.find(p=>p.id==='A3').name='" onclick="bad';t.recommendation.teamFingerprint=analysisFingerprint(t);t.research.signature=squadSignature(t);
   const html=renderFormationLayout(t,'8',now);assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);assert.match(html,/&quot; onclick=&quot;bad/);
+});
+
+test('bench groups P D C A while preserving model priority within roles, without changing saved IDs',()=>{
+  const t=team();t.recommendation.lineup.bench=['C5','D5','A3','C3','P1','D4','C4'];
+  const before=structuredClone(t.recommendation.lineup);
+  const html=renderFormationLayout(t,'8',now);
+  const ids=[...html.matchAll(/<li data-player-id="([^"]+)"/g)].map(m=>m[1]);
+  assert.deepEqual(ids,['P1','D5','D4','C5','C3','C4','A3']);
+  assert.deepEqual(t.recommendation.lineup,before);
 });
