@@ -13,7 +13,7 @@ export async function fetchPrimary({serviceURL,fetchImpl=fetch,signal,now=new Da
   if(data.version!==1||!Number.isFinite(age)||age< -60000||age>900000||!Array.isArray(data.players)||!Array.isArray(data.matches)||!Array.isArray(data.warnings))throw new Error('Risposta Fantacalcio non valida o scaduta.');
   return data;
 }
-export function primaryObservations(data,team,understat,matchday,now=new Date()){
+export function primaryObservations(data,team,understat,matchday,now=new Date(),calendar=null){
   if(data.season!==understat.season)throw new Error('Stagioni delle fonti non coerenti.');
   const sources=[],warnings=[...data.warnings],season=`${data.season}/${data.season+1}`;
   const requested=matchday.trim(),dayMatch=/^(?:giornata\s*)?(\d{1,2})(?:[ª°])?$/i.exec(requested);
@@ -33,6 +33,8 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     if(row.stats.rated===0)warnings.push(`${p.name}: nessuna presenza a voto; media voto e fantamedia non disponibili.`);
     const previews=data.matches.filter(m=>m.teams.some(t=>club(t)===club(p.club))&&(!requested||dayMatch&&m.matchday===Number(dayMatch[1])));
     if(previews.length!==1){warnings.push(`${p.name}: anteprima della giornata richiesta non disponibile.`);return {...p,observations,missing:[]};}
+    const official=calendar?.fixtures.find(f=>club(f.home)===club(previews[0].teams[0])&&club(f.away)===club(previews[0].teams[1]));
+    if(calendar&&!official){warnings.push(`${p.name}: anteprima non coerente con il calendario ufficiale; previsioni escluse.`);return {...p,observations,missing:[]};}
     const preview=previews[0],updated=/^(\d{2})\/(\d{2})\/(\d{4}) - \d{2}:\d{2}$/.exec(preview.updatedAt);
     const updateDay=updated?Date.UTC(+updated[3],+updated[2]-1,+updated[1]):NaN;
     const today=Date.parse(now.toLocaleDateString('sv-SE',{timeZone:'Europe/Rome'})+'T00:00:00Z');
@@ -47,7 +49,7 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     add('opponent',preview.teams[1-side],detail,'fact',period,preview.updatedAt);
     add('venue',side===0?'Casa':'Trasferta',detail,'fact',period,preview.updatedAt);
     const fixtureSource=sources.find(s=>s.id==='U1')??{id:'U1',url:understat.sourceUrl,title:'Understat · calendario',text:'',retrievedAt:understat.retrievedAt};if(!sources.includes(fixtureSource))sources.push(fixtureSource);
-    add('kickoff',fixtures[0].kickoff,fixtureSource,'fact',period);
+    add('kickoff',official?.kickoff??fixtures[0].kickoff,official?{id:'L1',text:''}:fixtureSource,'fact',period);
     const statuses=preview.players.filter(q=>q.id===row.id&&club(q.club)===club(p.club));
     if(statuses.length===1){
       const status=statuses[0];

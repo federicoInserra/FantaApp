@@ -63,3 +63,22 @@ button.pitch-player{border:0;background:transparent;padding:5px 2px;border-radiu
 @media(max-width:600px){.analysis-intro{display:block;margin-bottom:20px}.analysis-intro h2{font-size:25px}.analysis-matchday{width:100%;margin-top:20px}.analysis-steps{gap:14px}.analysis-workspace .research-step,.analysis-workspace .ai-result,.analysis-workspace .follow-up{padding:20px;border-radius:12px}.analysis-section-head{align-items:flex-start;gap:10px}.analysis-workspace h3{font-size:18px}.step-number{min-width:36px;height:36px;font-size:17px}.step-title{gap:10px}.analysis-chip{font-size:9px;padding:6px 8px}.chip-free{max-width:85px;text-align:center}.analysis-description{font-size:13px}.research-source-grid{grid-template-columns:1fr}.source-card-head>div>span{font-size:11px}.analysis-card-footer{flex-direction:column;align-items:stretch;gap:14px}.analysis-card-footer .analysis-meta{max-width:none}.analysis-model-card .button-primary{width:100%}.proposal-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.proposal-metrics>div{padding:16px}.proposal-metrics>div:last-child{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}.proposal-metrics>div:last-child>span{margin:0}.proposal-metrics>div:last-child>p{margin:0 0 0 auto}.proposal-metrics strong{font-size:28px}.proposal-metrics strong.proposal-cost{font-size:16px}.analysis-workspace .ai-result-text{font-size:14px;line-height:1.8}.ai-result .analysis-section-head{flex-wrap:wrap}.chat-bubble{max-width:100%;padding:16px}.chat-question{max-width:92%}.chat-suggestions{gap:8px}.chat-composer{padding:14px}.composer-footer{align-items:stretch;flex-direction:column}.composer-footer .ai-actions{width:100%;justify-content:stretch}.composer-footer .button{flex:1;width:auto}.analysis-workspace input,.analysis-workspace select,.analysis-workspace textarea{font-size:16px}.analysis-feedback{gap:12px}.analysis-feedback .button{padding:10px 12px}.analysis-feedback.is-pending #ai-progress{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.analysis-feedback.is-pending #ai-progress:before{animation:none}}
 .analysis-workspace label,.analysis-workspace input,.analysis-workspace select,.analysis-workspace textarea{font-family:Arial,Helvetica,sans-serif}.analysis-workspace select{appearance:none;-webkit-appearance:none;min-height:48px;padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236a6a65' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}.proposal-rationale{max-width:76ch}
+
+/* Color helps distinguish each step without competing with the squad. */
+.analysis-workspace .analysis-matchday {display:flex;flex-direction:column;gap:7px;padding:16px 20px;border:1px solid #b8d8c8;border-radius:16px;background:#edf7f1;color:#245941}
+.analysis-matchday strong {font-size:22px;line-height:1.2}
+.analysis-matchday > span:last-child {font-size:12px;line-height:1.5}
+.analysis-workspace .analysis-steps > .research-step:first-child {border-color:#bfd9ca;background:linear-gradient(140deg,#eff8f2,white 65%)}
+.analysis-workspace .analysis-steps > .research-step:first-child .step-number {background:#d8efe1;color:#246345;border-color:#b2d5bf}
+.analysis-workspace .source-mark {background:#deeee5;color:#275e43}
+.analysis-workspace .analysis-model-card {border-color:#c4d2ed;background:linear-gradient(140deg,#eef3ff,white 65%)}
+.analysis-workspace .analysis-model-card .step-number {background:#dce7ff;color:#345ba4;border-color:#b7cbee}
+.analysis-workspace .model-picker {border-color:#b9cbee;background:#f4f7ff}
+.analysis-workspace .ai-result {border-color:#e6caa4;background:linear-gradient(150deg,#fff7e9,white 55%)}
+.analysis-workspace .ai-result .eyebrow {color:#94601e}
+.analysis-workspace .proposal-metrics {background:#fff4df;border-color:#ead1a8}
+.analysis-workspace .follow-up {border-color:#d3c3e8;background:linear-gradient(150deg,#f5efff,white 60%)}
+.analysis-workspace .follow-up .eyebrow {color:#74459e}
+.analysis-workspace .chat-icon {background:#eadef8;color:#714296;border-color:#d3bee9}
+.analysis-workspace .chat-question {background:#eee5f9;border-color:#d7c7e9}
+.analysis-workspace .chat-suggestions button {background:#f5effb;border-color:#d7c7e9;color:#63388c}

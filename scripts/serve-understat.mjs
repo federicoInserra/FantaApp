@@ -1,3 +1,4 @@
+import {handleCalendar} from '../server/serie-a-calendar.mjs';
 // Local adapter for the Vercel handler, plus a static app preview. Bind only to loopback.
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -25,8 +26,8 @@ createServer(async(req,res)=>{
     const result=await (url.pathname==='/api/teams'?handleTeams(request,{store:previewStore}):handleAI(request));
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
   }
-  if(url.pathname==='/api/fantacalcio'){
-    const result=await handleFantacalcio(new Request(url,{method:req.method,headers:req.headers}));
+  if(url.pathname==='/api/fantacalcio'||url.pathname==='/api/calendar'){
+    const result=await (url.pathname==='/api/calendar'?handleCalendar:handleFantacalcio)(new Request(url,{method:req.method,headers:req.headers}));
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
   }
   if(url.pathname==='/api/understat'){

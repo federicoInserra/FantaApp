@@ -61,7 +61,7 @@ function refresh() {
   const busy = pending?.teamId === team.id;
   const reason = staleReason(entry.research,team,entry.matchday);
   host.innerHTML = `<section class="ai-card analysis-workspace" aria-labelledby="analysis-title">
-    <header class="analysis-intro"><div><p class="eyebrow">PREPARA LA GIORNATA</p><h2 id="analysis-title">Dai dati alla formazione</h2><p>Due passaggi per preparare il tuo undici.</p></div><div class="analysis-matchday"><label for="ai-matchday">Giornata da preparare</label><input id="ai-matchday" maxlength="120" placeholder="Prossima giornata" value="${escape(entry.matchday)}" ${pending?'disabled':''}></div></header>
+    <header class="analysis-intro"><div><p class="eyebrow">PREPARA LA GIORNATA</p><h2 id="analysis-title">Dai dati alla formazione</h2><p>Due passaggi per preparare il tuo undici.</p></div><div class="analysis-matchday"><span class="eyebrow">GIORNATA AUTOMATICA</span><strong>${entry.matchday?`Giornata ${escape(entry.matchday.replace(/^giornata\s*/i,''))}`:'Da rilevare'}</strong><span>${entry.research?.sources?.some(s=>s.id==='L1')?'Calendario ufficiale Serie A':'Rilevata con Aggiorna dati'}</span></div></header>
     <div class="analysis-steps">
       <section class="research-step analysis-surface" aria-labelledby="research-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">01</span><div><p class="eyebrow">LE FONTI</p><h3 id="research-title">Aggiorna i dati</h3></div></div><span class="analysis-chip chip-free">Nessun costo AI</span></header><p class="analysis-description">Statistiche e probabili formazioni, direttamente dalle fonti.</p>
         ${entry.research?`<div class="research-source-grid">${understatView(entry.research.understat)}${dataView(entry.research)}</div>`:'<div class="research-empty"><span aria-hidden="true">↻</span><p>La tua raccolta parte da qui.</p><small>Fantacalcio per voti e impiego, Understat per xG e xA.</small></div>'}
@@ -71,23 +71,6 @@ function refresh() {
     <div class="analysis-feedback ${busy?'is-pending':''}"><p id="ai-progress" role="status">${escape(busy?entry.progress||'Richiesta in corso…':pending?'È in corso una richiesta per un’altra squadra.':!fireworksReady()?(HOSTED_API?'Servizio AI non disponibile. Puoi comunque aggiornare i dati.':'Servizi AI non configurati.'):!understatURL?'Servizio Understat non configurato.':entry.notice||'')}</p>${busy&&pending.phase!=='saving'?'<button id="ai-cancel" class="button button-outline">Annulla</button>':''}</div>
     ${entry.error?`<p class="import-error analysis-alert" role="alert">${escape(entry.error)}</p>`:''}
     ${entry.recommendation?recommendationView(entry.recommendation,recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(team,{matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
-  host.querySelector('#ai-matchday').oninput = event => {
-    entry.matchday = event.target.value;
-    const reason = staleReason(entry.research,team,entry.matchday);
-    host.querySelector('#research-warning').textContent = reason;
-    host.querySelector('#research-warning').hidden = !reason;
-    host.querySelector('#ai-analyze').disabled = Boolean(pending || !fireworksReady() || reason);
-    const warning=host.querySelector('#recommendation-stale');
-    if(warning)warning.hidden=!(recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||reason);
-    const followUpReason=followUpUnavailableReason(team,entry.matchday),question=host.querySelector('#follow-up-question');
-    if(question){
-      const warning=host.querySelector('#follow-up-warning');warning.textContent=followUpReason;warning.hidden=!followUpReason;
-      question.disabled=Boolean(pending||!fireworksReady()||followUpReason);
-      host.querySelector('#follow-up-send').disabled=question.disabled||!question.value.trim();
-      host.querySelectorAll('[data-follow-up-question]').forEach(button=>{button.disabled=question.disabled;});
-    }
-    onContextChange?.(team,entry.matchday);
-  };
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);

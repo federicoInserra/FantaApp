@@ -1,3 +1,4 @@
+import {fetchCalendar, CALENDAR_URL} from './calendar.mjs';
 import {fetchPrimary, primaryObservations, STAT_FIELDS} from './primary-research.mjs';
 import { fetchUnderstat, understatSnapshot, validUnderstatSnapshot } from './understat.mjs';
 export const TAVILY_KEY_STORAGE = 'fantaapp.tavily.key.v1';
@@ -67,9 +68,14 @@ export async function researchSquad({ team, matchday = '', understatURL, signal,
   const understat = understatSnapshot(await fetchUnderstat({serviceURL:understatURL,signal,fetchImpl,now}),team.players,now);
   onProgress('Lettura voti e probabili formazioni Fantacalcio…');
   const primary = await fetchPrimary({serviceURL:understatURL,signal,fetchImpl,now});
-  const result = primaryObservations(primary,team,understat,matchday,now);
+  onProgress('Verifica giornata nel calendario ufficiale Serie A…');
+  const calendar=await fetchCalendar({serviceURL:understatURL,signal,fetchImpl,now});
+  if(calendar.season!==understat.season)throw new Error('Stagioni del calendario ufficiale e delle statistiche non coerenti.');
+  matchday=calendar.matchday;
+  const result = primaryObservations(primary,team,understat,matchday,now,calendar);
+  result.sources.push({id:'L1',url:CALENDAR_URL,title:`Lega Serie A · giornata ${matchday} · ${calendar.season}/${calendar.season+1}`,text:[...calendar.fixtures.map(f=>`${f.home} - ${f.away} · ${f.kickoff}`),...result.players.flatMap(p=>p.observations.filter(o=>o.sourceId==='L1').map(o=>o.quote))].join('\n'),retrievedAt:calendar.retrievedAt});
   for(const player of result.players) player.missing=Object.keys(FIELDS).filter(field=>!['minutes','xg','xa','shots'].includes(field)&&!player.observations.some(o=>o.field===field));
   for(const player of understat.players) if(player.reason) result.warnings.push(`${player.name}: Understat · ${player.reason}`);
   if(!result.sources.some(s=>s.id==='U1'))result.sources.push({id:'U1',url:understat.sourceUrl,title:'Understat · Serie A',text:'Dati numerici letti direttamente dal provider.',retrievedAt:understat.retrievedAt});
-  return {version:2,understat,createdAt:now.toISOString(),signature:squadSignature(team),matchday:matchday.trim(),...result,credits:0,requests:2,usage:[]};
+  return {version:2,understat,createdAt:now.toISOString(),signature:squadSignature(team),matchday:matchday.trim(),...result,credits:0,requests:3,usage:[]};
 }
