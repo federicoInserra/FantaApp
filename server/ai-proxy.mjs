@@ -55,7 +55,7 @@ export function providerRequest(action, body) {
   }
   throw new Error('action');
 }
-export async function handleAI(request, { env = process.env, fetchImpl = fetch, timeoutMs = 170000, logImpl = console.info } = {}) {
+export async function handleAI(request, { env = process.env, fetchImpl = fetch, timeoutMs = 290000, logImpl = console.info } = {}) {
   const url = new URL(request.url);
   if (url.pathname === '/api/ai-status') {
     if (request.method !== 'GET') return json({error:'method'},405);

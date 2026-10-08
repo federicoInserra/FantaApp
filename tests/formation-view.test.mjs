@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {renderFormationLayout} from '../src/formation-view.mjs';
 import {formationView,analysisFingerprint} from '../src/analysis-state.mjs';
 import {squadSignature} from '../src/research.mjs';
-import {players,lineup} from './fixtures/lineup.mjs';
+import {players,lineup,forecastFor} from './fixtures/lineup.mjs';
 const now=Date.parse('2026-10-08T12:00:00Z');
 function team(){
   const t={name:'Team',listSource:'leghe',formation:lineup.formation,players:structuredClone(players)};
   t.research={id:'r',createdAt:new Date(now).toISOString(),signature:squadSignature(t),matchday:'8',understat:{provider:'Understat'},players:[{observations:[{}]}]};
-  t.recommendation={version:2,lineup:structuredClone(lineup),researchId:'r',teamFingerprint:analysisFingerprint(t),matchday:'8'};
+  t.recommendation={version:2,lineup:structuredClone(lineup),forecast:forecastFor(lineup),researchId:'r',teamFingerprint:analysisFingerprint(t),matchday:'8'};
   return t;
 }
 test('the pitch shows the exact saved AI starters and ordered bench with their full roster names',()=>{
@@ -17,11 +17,14 @@ test('the pitch shows the exact saved AI starters and ordered bench with their f
   const ids=[...html.matchAll(/data-player-id="([^"]+)"/g)].map(m=>m[1]);
   assert.deepEqual(ids,[...['A','C','D','P'].flatMap(role=>lineup.starters.filter(id=>id.startsWith(role))),...lineup.bench]);
   assert.match(html,/D Giocatore 0/);assert.doesNotMatch(html,/Punteggio demo/);
+  assert.match(html,/71,4/);assert.match(html,/Previsione fantapunti/);assert.equal([...html.matchAll(/data-origin="pitch"/g)].length,11);
+  assert.match(html,/<button type="button" class="pitch-player"/);
 });
 test('manual module changes show an explicit draft and allow restoring the saved AI suggestion',()=>{
   const t=team();t.formation='3-4-3';
   const html=renderFormationLayout(t,'8',now);
   assert.match(html,/BOZZA INDICATIVA/);assert.match(html,/modulo diverso/);assert.match(html,/restore-recommendation/);
+  assert.doesNotMatch(html,/Previsione fantapunti/);
   t.formation=lineup.formation;assert.equal(formationView(t,'8',now).ai,true);
 });
 test('changed matchday, roster, rules, research or expired data never displays the old AI selection as current',()=>{
@@ -30,7 +33,7 @@ test('changed matchday, roster, rules, research or expired data never displays t
   t=team();t.rules=['New rules'];changed.push(t);
   t=team();t.research.id='new';changed.push(t);
   t=team();t.research.createdAt=new Date(now-7*3600000).toISOString();changed.push(t);
-  for(t of changed){assert.equal(formationView(t,'8',now).ai,false);assert.match(renderFormationLayout(t,'8',now),/proposta DeepSeek è superata/);}
+  for(t of changed){assert.equal(formationView(t,'8',now).ai,false);assert.match(renderFormationLayout(t,'8',now),/proposta DeepSeek è superata/);assert.doesNotMatch(renderFormationLayout(t,'8',now),/Previsione fantapunti/);}
   assert.equal(formationView(team(),'9',now).ai,false);
 });
 test('legacy text-only and malformed saved lineups stay readable without silently applying a guessed lineup',()=>{

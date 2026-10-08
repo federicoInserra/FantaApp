@@ -8,6 +8,7 @@ import {analysisFingerprint,withAnalysisResult,storedResearch,storedRecommendati
 import {squadSignature} from '../src/research.mjs';
 import {normalizeLeague,understatSnapshot} from '../src/understat.mjs';
 import {rawLeague,now} from './fixtures/understat.mjs';
+import {forecastFor} from './fixtures/lineup.mjs';
 const team={id:'team-one',name:'Team',formation:'4-3-3',listSource:'leghe',players:[{id:'p1',name:'Player',club:'Inter',role:'A',form:null,vote:null}]};
 const state=()=>({teams:[structuredClone(team)],activeTeamId:team.id});
 function research(id='research-one',date=now.toISOString()){
@@ -15,7 +16,8 @@ function research(id='research-one',date=now.toISOString()){
  return {version:2,id,createdAt:date,completedAt:date,signature:squadSignature(team),matchday:'6',understat:understatSnapshot(normalizeLeague(rawLeague(),2026,now),team.players,now),players:[{id:'p1',name:'Player',club:'Inter',observations:[{field:'vote',value:'6',sourceId:'F1',quote,kind:'fact',period:'2026/2027',method:'structured',unit:'voto',updatedAt:''}]}],sources:[{id:'F1',title:'Fantacalcio',url:'https://www.fantacalcio.it/statistiche-serie-a',text:quote,retrievedAt:date}],warnings:[]};
 }
 function recommendation(data,id='recommendation-one'){
- return {version:2,lineup:{formation:'3-4-3',starters:['p1'],bench:[]},id,text:'Proposta di test: 3-4-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
+ const lineup={formation:'3-4-3',starters:['p1'],bench:[]};
+ return {version:2,lineup,forecast:forecastFor(lineup),id,text:'Proposta di test: 3-4-3.',createdAt:data.completedAt,researchAt:data.completedAt,researchId:data.id,teamFingerprint:analysisFingerprint(team),matchday:'6',sources:data.sources};
 }
 async function database(){
  const pg=new PGlite();const store=createTeamStore(async(strings,...values)=>{let text=strings[0];values.forEach((v,i)=>{text+=`$${i+1}`+strings[i+1]});return (await pg.query(text,values)).rows;});
@@ -35,6 +37,7 @@ test('research and recommendation survive a second device, overwrite in place, a
   await phone.load();let saved=phone.state.teams[0];assert.equal(saved.research.id,'research-two');assert.equal(saved.recommendation.id,'recommendation-one');assert.ok(recommendationIsStale(saved.recommendation,saved,saved.research,'6'));
   await desktop.save(withAnalysisResult(desktop.state,team.id,'recommendation',recommendation(newer,'recommendation-two'),analysisFingerprint(team)));
   await phone.load();saved=phone.state.teams[0];assert.equal(saved.recommendation.researchId,'research-two');assert.equal(saved.recommendation.id,'recommendation-two');assert.equal(recommendationIsStale(saved.recommendation,saved,saved.research,'6'),false);
+  assert.deepEqual(saved.recommendation.forecast,recommendation(newer).forecast);
   const raw=(await pg.query('SELECT state FROM fantaapp_workspace')).rows[0].state;
   assert.ok(!JSON.stringify(raw).includes('research-one'));assert.ok(!JSON.stringify(raw).includes('recommendation-one'));assert.equal(Array.isArray(raw.teams[0].research),false);
   // Ordinary roster edits retain the latest results, while marking the recommendation stale.
@@ -68,6 +71,7 @@ test('stored results whitelist fields and reject malformed timestamps, evidence 
  const rec=recommendation(research());assert.throws(()=>storedRecommendation({...rec,text:'x'.repeat(80001)}));
  assert.ok(!JSON.stringify(storedRecommendation({...rec,apiKey:'secret',usage:{secret:'secret'}})).includes('secret'));
  const legacy={...rec,version:1};delete legacy.lineup;assert.equal(storedRecommendation(legacy).text,legacy.text);
+ const oldStructured={...rec};delete oldStructured.forecast;assert.equal(storedRecommendation(oldStructured).forecast,undefined);
  assert.throws(()=>storedRecommendation({...rec,lineup:{...rec.lineup,bench:['p1']}}));
 });
 test('invalid AI selection cannot replace the previous recommendation or saved module',()=>{

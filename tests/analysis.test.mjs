@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRequest, parseResponse, analyzeSquad, ENDPOINT } from '../src/analysis.mjs';
 import { squadSignature } from '../src/research.mjs';
-import {players,lineup} from './fixtures/lineup.mjs';
+import {players,lineup,forecastFor} from './fixtures/lineup.mjs';
 const team = { name: 'Test', listSource: 'leghe', players: [{ id: '1', name: 'Player', role: 'A', club: 'Club', form: 10, vote: 10, available: false }] };
 const research = {createdAt:new Date().toISOString(), signature:squadSignature(team),matchday:'',understat:{provider:'Understat'},players:[{observations:[{}]}],sources:[{id:'S1',url:'https://example.com',title:'Fonte'}]};
-const complete = { status: 'completed', output: [{ type: 'reasoning', content: [{type:'reasoning_text',text:'Private thoughts'}] }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: JSON.stringify({formation:'4-3-3',starters:[],bench:[],analysis:'Consiglio'}) }] }] };
+const complete = { status: 'completed', output: [{ type: 'reasoning', content: [{type:'reasoning_text',text:'Private thoughts'}] }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: JSON.stringify({formation:'4-3-3',starters:[],bench:[],forecast:forecastFor({starters:[]}),analysis:'Consiglio'}) }] }] };
 test('request requires research and excludes demo statistics', () => {
  const request = buildRequest(team, '8', 'Modificatore difesa');
  assert.equal(request.store, false);
@@ -74,9 +74,11 @@ test('analysis receives structured Understat data and blocks an older snapshot w
 });
 test('completed structured response generates readable lineup text from the same validated roster IDs',()=>{
  const output=result=>({status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:result}]}]});
- const data={...lineup,analysis:'Ballottaggi da verificare [S1].'};
+ const data={...lineup,forecast:forecastFor(lineup),analysis:'Ballottaggi da verificare [S1].'};
  const result=parseResponse(output(JSON.stringify(data)),research,{players});
  assert.deepEqual(result.lineup,lineup);assert.match(result.text,/Difensori: D Giocatore 0/);assert.match(result.text,/1\. A Giocatore 3/);
+ assert.deepEqual(result.forecast,data.forecast);assert.match(result.text,/71,4 fantapunti/);
+ const sourced={...research,players:[{id:'D0',observations:[{field:'opponent',value:'Parma'}]}]};assert.match(parseResponse(output(JSON.stringify(data)),sourced,{players}).text,/D Giocatore 0 \(vs Parma\)/);
  assert.deepEqual(parseResponse(output('```json\n'+JSON.stringify(data)+'\n```'),research,{players}),result);
- for(const bad of ['Testo libero','{}',JSON.stringify({...data,analysis:''}),JSON.stringify({...data,bench:['unknown']})])assert.throws(()=>parseResponse(output(bad),research,{players}));
+ for(const bad of ['Testo libero','{}',JSON.stringify({...data,analysis:''}),JSON.stringify({...data,bench:['unknown']}),JSON.stringify({...data,forecast:undefined})])assert.throws(()=>parseResponse(output(bad),research,{players}));
 });

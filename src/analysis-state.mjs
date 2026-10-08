@@ -2,6 +2,7 @@ import {teamRules} from './rules.mjs';
 import {validateExtraction,staleReason} from './research.mjs';
 import {validUnderstatSnapshot} from './understat.mjs';
 import {storedLineup,validateLineup,suggestLineup} from './lineup.mjs';
+import {storedForecast} from './forecast.mjs';
 const pick=(o,keys)=>Object.fromEntries(keys.filter(k=>o?.[k]!==undefined).map(k=>[k,o[k]]));
 const text=(v,max)=>typeof v==='string'&&v.length<=max;
 const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)&&Number.isFinite(Date.parse(v));
@@ -37,7 +38,8 @@ export function storedResearch(data){
 }
 export function storedRecommendation(data){
   if(![1,2].includes(data?.version)||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
-  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(data.version===2?{lineup:storedLineup(data.lineup)}:{}),sources:data.sources.map(sourceMetadata)});
+  const lineup=data.version===2?storedLineup(data.lineup):null;
+  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(lineup?{lineup,...(data.forecast!==undefined?{forecast:storedForecast(data.forecast,lineup)}:{})}:{}),sources:data.sources.map(sourceMetadata)});
 }
 export function recommendationIsStale(recommendation,team,research,matchday){
   return !research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;

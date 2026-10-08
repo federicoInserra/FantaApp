@@ -5,6 +5,7 @@ import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
 import { ROLES } from './lineup.mjs';
 import {renderFormationLayout} from './formation-view.mjs';
+import {renderPlayerAnalysis} from './player-analysis.mjs';
 
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
@@ -123,12 +124,13 @@ function navigate(target) {
   if (location.hash === hash) { page = target; render(); }
   else location.hash = hash;
 }
-function showPlayer(id) {
+function showPlayer(id,fromPitch=false) {
   const player = activeTeam()?.players.find(item => item.id === id);
   if (!player) return;
-  document.querySelector('#player-detail-content').innerHTML = `<p class="eyebrow">${ROLES[player.role]}</p><h2 id="player-detail-title">${escapeHTML(player.name)}</h2><p>${escapeHTML(player.club)}</p><div class="player-availability"><span>Disponibilità</span><button type="button" class="button button-outline" data-action="toggle-player" data-id="${escapeHTML(id)}" aria-pressed="${player.available !== false}">${player.available === false ? 'Assente' : 'Disponibile'}</button></div><p class="field-hint">Tocca per cambiare la disponibilità. Gli assenti vengono esclusi dalla formazione.</p><button class="button button-quiet danger-action" type="button" data-action="remove-player" data-id="${escapeHTML(id)}">Rimuovi dalla rosa</button>`;
+  document.querySelector('#player-detail-content').innerHTML = `<p class="eyebrow">${ROLES[player.role]}</p><h2 id="player-detail-title">${escapeHTML(player.name)}</h2><p>${escapeHTML(player.club)}</p>${renderPlayerAnalysis(activeTeam(),id,{fromPitch,matchday:document.querySelector('#ai-matchday')?.value??activeTeam().research?.matchday??''})}<div class="player-availability"><span>Disponibilità</span><button type="button" class="button button-outline" data-action="toggle-player" data-id="${escapeHTML(id)}" aria-pressed="${player.available !== false}">${player.available === false ? 'Assente' : 'Disponibile'}</button></div><p class="field-hint">Tocca per cambiare la disponibilità. Gli assenti vengono esclusi dalla formazione.</p><button class="button button-quiet danger-action" type="button" data-action="remove-player" data-id="${escapeHTML(id)}">Rimuovi dalla rosa</button>`;
   const dialog = document.querySelector('#player-detail-dialog');
   dialog.dataset.playerId = id;
+  dialog.dataset.fromPitch=String(fromPitch);
   if (!dialog.open) dialog.showModal();
 }
 document.addEventListener('click', async event => {
@@ -165,11 +167,11 @@ document.addEventListener('click', async event => {
     activeTeam().formation=activeTeam().recommendation.lineup.formation;
     await save();render();
   }
-  if (action === 'player-details') showPlayer(id);
+  if (action === 'player-details') showPlayer(id,actionElement.dataset.origin==='pitch');
   if (action === 'clear-filters') { roleFilter = 'Tutti'; rosterQuery = ''; render(); document.querySelector('#roster-search')?.focus(); }
   if (action === 'toggle-player') {
     const player = activeTeam().players.find(item => item.id === id);
-    if (player) { player.available = player.available === false; if (!await save()) render(); if(!cloud.ready)return; render(); showPlayer(id); document.querySelector('#player-detail-content [data-action="toggle-player"]').focus(); }
+    if (player) { player.available = player.available === false; if (!await save()) render(); if(!cloud.ready)return; render(); showPlayer(id,document.querySelector('#player-detail-dialog').dataset.fromPitch==='true'); document.querySelector('#player-detail-content [data-action="toggle-player"]').focus(); }
   }
   if (action === 'remove-player') {
     const team = activeTeam(); const player = team.players.find(item => item.id === id);

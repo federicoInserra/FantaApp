@@ -8,7 +8,7 @@
       "maxDuration": 30
     },
     "api/ai.mjs": {
-      "maxDuration": 180
+      "maxDuration": 300
     },
     "api/ai-status.mjs": {
       "maxDuration": 10

@@ -82,10 +82,10 @@ function refresh() {
 async function run(kind,team,entry) {
   if (pending) return;
   const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday;
-  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 3 minuti.' : '';
+  pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.notice = ''; entry.progress = kind === 'analysis' ? 'DeepSeek sta preparando la proposta. La richiesta può durare fino a 5 minuti.' : '';
   refresh();
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, kind === 'research' ? 600000 : 180000);
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, kind === 'research' ? 600000 : 300000);
   async function persist(resultKind,result){
     if(!saveResult)throw new Error('Salvataggio database non disponibile.');
     clearTimeout(timer);pending.phase='saving';entry.progress='Salvataggio nel database…';refresh();
@@ -106,7 +106,7 @@ async function run(kind,team,entry) {
     } else {
       const result = await analyzeSquad({key,team:snapshot,research:researchSnapshot,matchday,signal:controller.signal});
       controller.signal.throwIfAborted();
-      await persist('recommendation',{version:2,id:crypto.randomUUID(),text:result.text,lineup:result.lineup,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
+      await persist('recommendation',{version:2,id:crypto.randomUUID(),text:result.text,lineup:result.lineup,forecast:result.forecast,sources:result.sources,createdAt:new Date().toISOString(),teamFingerprint:fingerprint(snapshot),researchId:researchSnapshot.id,researchAt:researchSnapshot.completedAt,matchday});
       entry.notice='Proposta salvata nel database e applicata al campo qui sotto.';
     }
   } catch (error) {
