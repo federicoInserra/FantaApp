@@ -7,6 +7,19 @@ const DOMAINS = ['fantacalcio.it', 'sosfanta.com', 'sport.sky.it'];
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
 const validKey = value => typeof value === 'string' && Boolean(value.trim()) && !/\s/.test(value.trim());
 const string = (v, max) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
+// Log counts only: never prompts, player data, answers, reasoning traces or credentials.
+export function aiDiagnostics(data, body, elapsedMs) {
+  const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const usage = data?.usage;
+  const status = ['completed','incomplete','failed'].includes(data?.status) ? data.status : 'unknown';
+  const reason = ['max_output_tokens','content_filter','max_tool_calls'].includes(data?.incomplete_details?.reason) ? data.incomplete_details.reason : null;
+  return {model:body.model,status,reason,requestedMaxOutputTokens:body.max_output_tokens,
+    reportedMaxOutputTokens:count(data?.max_output_tokens),inputTokens:count(usage?.input_tokens),
+    outputTokens:count(usage?.output_tokens),reasoningTokens:count(usage?.output_tokens_details?.reasoning_tokens),
+    answerCharacters:(Array.isArray(data?.output) ? data.output : []).filter(item=>item?.type==='message'&&item.role==='assistant')
+      .flatMap(item=>Array.isArray(item.content)?item.content:[]).filter(part=>part?.type==='output_text'&&typeof part.text==='string')
+      .reduce((sum,part)=>sum+part.text.length,0),elapsedMs:count(elapsedMs)};
+}
 async function limitedText(stream, limit) {
   const reader = stream?.getReader();
   if (!reader) throw new Error('body');
@@ -41,7 +54,7 @@ export function providerRequest(action, body) {
   }
   throw new Error('action');
 }
-export async function handleAI(request, { env = process.env, fetchImpl = fetch, timeoutMs = 170000 } = {}) {
+export async function handleAI(request, { env = process.env, fetchImpl = fetch, timeoutMs = 170000, logImpl = console.info } = {}) {
   const url = new URL(request.url);
   if (url.pathname === '/api/ai-status') {
     if (request.method !== 'GET') return json({error:'method'},405);
@@ -59,12 +72,15 @@ export async function handleAI(request, { env = process.env, fetchImpl = fetch, 
   const key = env[target.keyName]?.trim();
   if (!validKey(key)) return json({error:'not_configured'},503);
   try {
+    const startedAt = Date.now();
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
     const response = await fetchImpl(target.url, {method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(target.body),signal,redirect:'error'});
     if (!response.ok) return json({error:'provider_error'}, [401,402,403,429,432,433].includes(response.status) ? response.status : 502);
     let content = await limitedText(response.body, 4000000);
     // Never forward credentials, including accidental provider echoes.
     for (const secret of [env.FIREWORKS_API_KEY,env.TAVILY_API_KEY]) if (validKey(secret)) content = content.replaceAll(secret.trim(), '[redacted]');
-    return json(JSON.parse(content));
+    const data = JSON.parse(content);
+    if (target.url === FIREWORKS) logImpl('AI response diagnostics', aiDiagnostics(data,target.body,Date.now()-startedAt));
+    return json(data);
   } catch (error) { return json({error: error.name === 'TimeoutError' || error.name === 'AbortError' ? 'timeout' : 'provider_unavailable'}, error.name === 'TimeoutError' || error.name === 'AbortError' ? 504 : 502); }
 }
