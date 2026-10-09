@@ -1,10 +1,16 @@
 # Saved lineups and automatic results
 
-Each new structured recommendation is archived in `fantaapp_lineup_history`, independently of the team's latest recommendation. Its key is `(team_id, season, matchday, method)`; DeepSeek, Kimi and Statistical engine have separate entries. Regeneration replaces only the matching entry and clears its previous actual result. Seasons and matchdays remain separate. Removing a team removes its archive.
+Each new structured recommendation is archived in `fantaapp_lineup_history`, independently of the team's latest recommendation. Its key is `(team_id, season, matchday, method)`; DeepSeek, Kimi, Statistical engine, ChatGPT and Federico have separate entries. Regeneration or manual saving replaces only the matching entry and clears its previous actual result. Seasons and matchdays remain separate. Removing a team removes its archive.
 
 The archive captures the roster, Fantacalcio player identities, ordered bench, rules, generation timestamp, round deadline and full recommendation. Workspace saves and archival updates are a single PostgreSQL statement, with the existing revision check. Ordinary edits and follow-up questions do not replace archived choices. Actual-score updates are guarded by the recommendation ID and source retrieval time, preventing stale requests from attaching results to regenerated choices.
 
 The latest compatible existing recommendation is migrated on initialization. Earlier overwritten suggestions cannot be recovered. Stale recommendations whose original roster/research cannot be established are not reconstructed from the current team.
+
+## Manual choices
+
+ChatGPT and Federico use an editable pitch with all supported modules, role-filtered available roster players and an ordered bench. Selecting an already assigned player swaps the positions; empty bench slots are omitted when saved. Module changes preserve choices, promote the first reserves for added positions and place surplus starters at the front of the bench. Each method keeps a separate draft. Selecting a method reloads its own archived choice for the current season and matchday. Saving is explicit and uses the same guarded database/archive operation as generated recommendations, including the selected module, starters, bench and optional notes.
+
+ChatGPT's Copy prompt button uses the same shared request builder as DeepSeek and Kimi, joining its exact instructions and input strings. It makes no model request. A selectable text preview provides a fallback when clipboard access fails. The user pastes this prompt into their own chat, then enters the resulting lineup. If the research or roster changes after copying, the prompt must be copied again before saving. Editing works without fresh research; copying and saving require the same fresh verified season/matchday context used by the other methods. Manual entries contain no invented forecast or app model cost and cannot use model follow-up questions.
 
 ## Results
 
@@ -20,4 +26,4 @@ A winner or tie is shown among the saved methods only when at least two methods 
 
 ## Validation
 
-131 automated tests pass, including database isolation/overwrites, atomic rollback, revision conflicts, migration, in-flight generation/scoring races, substitutions, modifiers, published-vote parsing and comparison ties/exclusions. Browser verification used a disposable database and synthetic results for all three methods; no paid model requests or production team changes were used for testing. The parser was also checked against a real public matchday page.
+140 automated tests pass, including database isolation/overwrites across all five methods, atomic rollback, revision conflicts, migration, in-flight generation/scoring races, manual role filtering/swaps/module changes, exact prompt copying, substitutions, modifiers, published-vote parsing and comparison ties/exclusions. Browser verification used a disposable database and synthetic results for all five methods, checking explicit saves, reloads, independent manual choices and bench priorities; no paid model requests or production team changes were used for testing. The parser was also checked against a real public matchday page.

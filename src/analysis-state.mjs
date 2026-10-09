@@ -5,6 +5,7 @@ import {validateExtraction,staleReason} from './research.mjs';
 import {validUnderstatSnapshot} from './understat.mjs';
 import {storedLineup,validateLineup,suggestLineup} from './lineup.mjs';
 import {storedForecast,forecastTotals} from './forecast.mjs';
+import {isManualMethod,recommendationLabel} from './recommendation-methods.mjs';
 const pick=(o,keys)=>Object.fromEntries(keys.filter(k=>o?.[k]!==undefined).map(k=>[k,o[k]]));
 const text=(v,max)=>typeof v==='string'&&v.length<=max;
 const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)&&Number.isFinite(Date.parse(v));
@@ -54,7 +55,11 @@ function aiMetadata(data){
 }
 export function storedRecommendation(data){
   if(![1,2].includes(data?.version)||!text(data.id,100)||!data.id||!date(data.createdAt)||!date(data.researchAt)||!text(data.researchId,100)||!data.researchId||!text(data.teamFingerprint,30000)||!text(data.matchday,120)||!text(data.text,80000)||!data.text.trim()||!list(data.sources,150))fail();
-  if(data.method!==undefined&&data.method!==ENGINE_ID)fail();
+  const manual=isManualMethod(data.method);
+  if(data.method!==undefined&&data.method!==ENGINE_ID&&!manual)fail();
+  if(manual&&(data.version!==2||data.model!==undefined||data.aiUsage!==undefined||data.engine!==undefined||data.forecast!==undefined||data.followUps?.length))fail();
+  if(data.notes!==undefined&&(!manual||!text(data.notes,5000)))fail();
+  if(data.promptCopiedAt!==undefined&&(!manual||data.method!=='chatgpt'||!date(data.promptCopiedAt)||Date.parse(data.promptCopiedAt)>Date.parse(data.createdAt)))fail();
   if(data.method===ENGINE_ID&&(data.version!==2||data.forecast===undefined||data.model!==undefined||data.aiUsage!==undefined||data.followUps?.length))fail();
   const engine=data.method===ENGINE_ID?storedEngineMetadata(data.engine):null;
   const lineup=data.version===2?storedLineup(data.lineup):null;
@@ -63,7 +68,7 @@ export function storedRecommendation(data){
   if(data.followUps!==undefined&&!list(data.followUps,MAX_FOLLOW_UPS))fail();
   const followUps=data.followUps?.map(storedFollowUp);
   if(followUps&&new Set(followUps.map(item=>item.id)).size!==followUps.length)fail();
-  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(engine?{method:ENGINE_ID,engine}:aiMetadata(data)),...(lineup?{lineup,...(forecast?{forecast}:{})}:{}),...(followUps?{followUps}:{}),sources:data.sources.map(sourceMetadata)});
+  return structuredClone({...pick(data,['version','id','createdAt','researchId','researchAt','teamFingerprint','matchday','text']),...(manual?{method:data.method,...pick(data,['promptCopiedAt','notes'])}:engine?{method:ENGINE_ID,engine}:aiMetadata(data)),...(lineup?{lineup,...(forecast?{forecast}:{})}:{}),...(followUps?{followUps}:{}),sources:data.sources.map(sourceMetadata)});
 }
 export function recommendationIsStale(recommendation,team,research,matchday,now=Date.now()){
   return (recommendation.method===ENGINE_ID&&engineDeadlinePassed(research,now))||!research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;
@@ -72,9 +77,9 @@ export function formationView(team,matchday=team.research?.matchday??'',now=Date
   const rec=team.recommendation;
   let reason='';
   if(rec){
-    if(recommendationIsStale(rec,team,team.research,matchday,now)||staleReason(team.research,team,matchday,now))reason=rec.method===ENGINE_ID?'La proposta Statistical engine è superata. Generane una nuova con dati aggiornati.':'La proposta AI è superata. Generane una nuova con dati aggiornati.';
+    if(recommendationIsStale(rec,team,team.research,matchday,now)||staleReason(team.research,team,matchday,now))reason=isManualMethod(rec.method)?`La formazione ${recommendationLabel(rec)} è superata. Verifica i dati e salvala di nuovo.`:rec.method===ENGINE_ID?'La proposta Statistical engine è superata. Generane una nuova con dati aggiornati.':'La proposta AI è superata. Generane una nuova con dati aggiornati.';
     else if(!rec.lineup)reason='La proposta precedente contiene solo testo. Generane una nuova per visualizzarla sul campo.';
-    else if(team.formation!==rec.lineup.formation)reason=rec.method===ENGINE_ID?'Hai scelto un modulo diverso dalla proposta Statistical engine. Il campo mostra una bozza indicativa.':'Hai scelto un modulo diverso dalla proposta AI. Il campo mostra una bozza indicativa.';
+    else if(team.formation!==rec.lineup.formation)reason=isManualMethod(rec.method)?`Hai scelto un modulo diverso dalla formazione ${recommendationLabel(rec)}. Il campo mostra una bozza indicativa.`:rec.method===ENGINE_ID?'Hai scelto un modulo diverso dalla proposta Statistical engine. Il campo mostra una bozza indicativa.':'Hai scelto un modulo diverso dalla proposta AI. Il campo mostra una bozza indicativa.';
     else{
       try{return {...validateLineup(rec.lineup,team.players),ai:true,reason:''};}
       catch{reason='La formazione salvata non corrisponde alla rosa. Genera una nuova proposta.';}
@@ -99,6 +104,7 @@ export function withAnalysisResult(state,teamId,kind,result,expectedFingerprint)
     team.recommendation=recommendation;
   }else if(kind==='followUp'){
     const rec=team.recommendation;
+    if(isManualMethod(rec?.method))throw new Error('Le formazioni manuali non utilizzano la conversazione Fireworks.');
     if(!rec||rec.id!==result.recommendationId||recommendationIsStale(rec,team,team.research,result.matchday))throw new Error('La proposta o i dati sono cambiati. Riapri la formazione prima di fare altre domande.');
     const history=rec.followUps??[];
     if((history.at(-1)?.id??null)!==result.previousFollowUpId)throw new Error('La conversazione è cambiata. Ricarica la squadra prima di riprovare.');

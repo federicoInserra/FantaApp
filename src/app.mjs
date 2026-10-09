@@ -7,6 +7,7 @@ import { ROLES } from './lineup.mjs';
 import {renderFormationLayout} from './formation-view.mjs';
 import {renderPlayerAnalysis} from './player-analysis.mjs';
 import {mountComparison} from './comparison-ui.mjs';
+import {mountManualFormation} from './manual-lineup-ui.mjs';
 
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
@@ -210,9 +211,12 @@ document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEve
 
 app.addEventListener('change', async event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; await save(); render(); } });
 window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
-setupAnalysis({onContextChange:(team,matchday)=>{
+setupAnalysis({onContextChange:(team,matchday,manual)=>{
   const host=document.querySelector('#formation-view');
-  if(host&&page==='formazione'&&activeTeam()?.id===team.id)host.innerHTML=renderFormationLayout(team,matchday);
+  if(host&&page==='formazione'&&activeTeam()?.id===team.id){
+    if(manual)mountManualFormation(host,team,manual.draft,manual);
+    else host.innerHTML=renderFormationLayout(team,matchday);
+  }
 },saveResult:async(teamId,kind,result,expectedFingerprint)=>{
   const next=withAnalysisResult(state,teamId,kind,result,expectedFingerprint);
   if(cloud.busy||!cloud.ready)throw new Error('Database occupato o non disponibile. Ricarica le squadre.');

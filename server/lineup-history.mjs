@@ -1,13 +1,8 @@
 import {analysisFingerprint} from '../src/analysis-state.mjs';
 import {teamRules} from '../src/rules.mjs';
 import {validateLineup} from '../src/lineup.mjs';
-import {DEFAULT_MODEL,AI_MODELS} from '../src/ai-models.mjs';
-import {ENGINE_ID} from '../src/statistical-engine.mjs';
-
-export function recommendationMethod(rec) {
-  if(rec.method===ENGINE_ID)return ENGINE_ID;
-  return (rec.model??DEFAULT_MODEL)===AI_MODELS[1].id?'kimi':'deepseek';
-}
+import {recommendationMethod} from '../src/recommendation-methods.mjs';
+export {recommendationMethod};
 // Capture evidence at generation time, never reconstruct a past roster from today's team.
 export function archiveCandidates(state) {
   return state.teams.flatMap(team=>{
