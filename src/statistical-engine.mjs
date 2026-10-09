@@ -12,8 +12,9 @@ const round=n=>Math.round(n*10)/10;
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function engineRules(team){
   const rules=teamRules(team),defaults=defaultRules();
-  // Presentation and tactical preference are soft; every hard rule must be recognized.
-  for(let i=0;i<14;i++)if(i!==4&&rules[i]!==defaults[i])throw new Error(`Statistical engine: regola ${i+1} non supportata. Ripristina il profilo classico predefinito.`);
+  // League size, auction credits and roster limits do not affect matchday scoring.
+  // Validate only the formation, substitution, modifier and scoring rules.
+  for(let i=3;i<14;i++)if(i!==4&&rules[i]!==defaults[i])throw new Error(`Statistical engine: regola ${i+1} non supportata. Ripristina il profilo classico predefinito.`);
   const match=/^Massimo ([0-5]) sostituzioni per giornata\.$/.exec(rules[4]);
   if(!match)throw new Error('Statistical engine: limite sostituzioni non supportato (0–5).');
   return {maxSubs:Number(match[1]),formations:Object.keys(FORMATIONS),goal:3,assist:1,yellow:.5,red:1,cleanSheet:1};
