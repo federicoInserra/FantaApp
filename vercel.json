@@ -16,6 +16,7 @@
     "api/teams.mjs": {
       "maxDuration": 30
     },
+    "api/lineups.mjs": {"maxDuration": 60},
     "api/calendar.mjs": {"maxDuration": 30},
     "api/fantacalcio.mjs": {
       "maxDuration": 30

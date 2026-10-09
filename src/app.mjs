@@ -6,6 +6,7 @@ import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './ca
 import { ROLES } from './lineup.mjs';
 import {renderFormationLayout} from './formation-view.mjs';
 import {renderPlayerAnalysis} from './player-analysis.mjs';
+import {mountComparison} from './comparison-ui.mjs';
 
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
@@ -20,7 +21,7 @@ function cloudStatus({mode,message}) {
 }
 const cloud=new DatabaseTeams({onStatus:cloudStatus});
 await cloud.load();state=cloud.state;
-const pages = ['panoramica', 'rosa', 'formazione', 'regole'];
+const pages = ['panoramica', 'rosa', 'formazione', 'confronto', 'regole'];
 let page = 'panoramica';
 let roleFilter = 'Tutti';
 let rosterQuery = '';
@@ -50,7 +51,7 @@ function listLabel(team) { return team.listSource ? LISTS[team.listSource] : 'Li
 function teamContext(team) {
   return `<a class="back-link" href="#panoramica">← Le mie squadre</a>
     <div class="team-context"><h1>${escapeHTML(team.name)}</h1><button class="button button-quiet" type="button" data-action="team-options" aria-label="Gestisci ${escapeHTML(team.name)}">Gestisci</button></div>
-    <nav class="team-nav" aria-label="Sezioni della squadra">${[['rosa', 'Rosa'], ['formazione', 'Formazione'], ['regole', 'Regole']].map(([target, label]) => `<a href="#${target}/${encodeURIComponent(team.id)}" ${page === target ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
+    <nav class="team-nav" aria-label="Sezioni della squadra">${[['rosa', 'Rosa'], ['formazione', 'Formazione'], ['confronto', 'Confronto'], ['regole', 'Regole']].map(([target, label]) => `<a href="#${target}/${encodeURIComponent(team.id)}" ${page === target ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
 }
 function renderOverview() {
   return `${pageHeader('IL TUO FANTACALCIO', 'Le mie squadre', 'Scegli una squadra per aprire la rosa.', state.teams.length ? button('+ Nuova squadra', 'new-team') : '')}
@@ -74,6 +75,9 @@ function renderRoster(team) {
 function renderFormation(team) {
   return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}
     <div id="ai-analysis"></div><div id="formation-view">${renderFormationLayout(team)}</div>`;
+}
+function renderComparison() {
+  return `${pageHeader('RISULTATI PER METODO', 'Confronto formazioni', 'Le proposte salvate per stagione e giornata, con i fantapunti calcolati dai risultati delle partite.')}<p class="data-note">Rigenerare lo stesso metodo nella stessa giornata sostituisce la sua proposta. Rosa, panchina e regole restano conservate con ogni formazione. I risultati si aggiornano automaticamente aprendo questa pagina; puoi aggiornarli anche dopo eventuali rettifiche dei voti.</p><div id="lineup-comparison"></div>`;
 }
 
 function renderRules(team) {
@@ -104,8 +108,9 @@ function render() {
   if (!team && page !== 'panoramica') page = 'panoramica';
   document.querySelector('#breadcrumb').textContent = page === 'panoramica' ? 'Le mie squadre' : team.name;
   document.title = `${page === 'panoramica' ? 'Le mie squadre' : team.name} · FantaApp`;
-  app.innerHTML = `<div class="page-content">${page === 'panoramica' ? renderOverview() : teamContext(team) + ({ rosa: renderRoster, formazione: renderFormation, regole: renderRules })[page](team)}</div>`;
+  app.innerHTML = `<div class="page-content">${page === 'panoramica' ? renderOverview() : teamContext(team) + ({ rosa: renderRoster, formazione: renderFormation, confronto:renderComparison, regole: renderRules })[page](team)}</div>`;
   if (page === 'formazione') mountAnalysis(team);
+  if (page === 'confronto') mountComparison(team);
 }
 function readRoute() {
   const [target, encodedId] = location.hash.slice(1).split('/');

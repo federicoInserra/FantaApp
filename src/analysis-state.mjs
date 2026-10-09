@@ -36,7 +36,11 @@ export function storedResearch(data){
   if(new Set(sources.map(s=>s.id)).size!==sources.length)fail();
   if(!data.players.every(p=>text(p.id,150)&&text(p.name,200)&&text(p.club,150)&&list(p.observations,40)))fail();
   if(new Set(data.players.map(p=>p.id)).size!==data.players.length)fail();
-  const players=validateExtraction(data,data.players,sources);
+  const players=validateExtraction(data,data.players,sources).map((player,i)=>{
+    const id=data.players[i].fantacalcioId;
+    if(id!==undefined&&(typeof id!=='string'||!/^\d{1,12}$/.test(id)))fail();
+    return {...player,...(id!==undefined?{fantacalcioId:id}:{})};
+  });
   // Reject invalid evidence rather than silently presenting a changed saved result.
   if(players.some((p,i)=>p.observations.length!==data.players[i].observations.length))fail();
   if(data.roundStartsAt!==undefined&&!date(data.roundStartsAt))fail();

@@ -24,6 +24,8 @@ export function primaryObservations(data,team,understat,matchday,now=new Date(),
     const observations=[];
     if(matches.length!==1){warnings.push(`${p.name}: identità Fantacalcio ${matches.length?'ambigua':'non trovata'}.`);return {...p,observations,missing:[]};}
     const row=matches[0];
+    // Keep the provider's stable identity for scoring this roster after the matchday.
+    p={...p,fantacalcioId:row.id};
     const source={id:`F${sources.length+1}`,url:'https://www.fantacalcio.it/statistiche-serie-a',title:`Fantacalcio · ${row.name} · ${season}`,text:'',retrievedAt:data.retrievedAt};sources.push(source);
     const add=(field,value,source,kind='fact',period=season,updatedAt='')=>{
       const quote=`${p.name} (${p.club}) · ${period} · ${field}: ${value}`;
