@@ -77,5 +77,5 @@ export async function researchSquad({ team, matchday = '', understatURL, signal,
   for(const player of result.players) player.missing=Object.keys(FIELDS).filter(field=>!['minutes','xg','xa','shots'].includes(field)&&!player.observations.some(o=>o.field===field));
   for(const player of understat.players) if(player.reason) result.warnings.push(`${player.name}: Understat · ${player.reason}`);
   if(!result.sources.some(s=>s.id==='U1'))result.sources.push({id:'U1',url:understat.sourceUrl,title:'Understat · Serie A',text:'Dati numerici letti direttamente dal provider.',retrievedAt:understat.retrievedAt});
-  return {version:2,understat,createdAt:now.toISOString(),signature:squadSignature(team),matchday:matchday.trim(),...result,credits:0,requests:3,usage:[]};
+  return {version:2,roundStartsAt:new Date(Math.min(...calendar.fixtures.map(f=>Date.parse(f.kickoff)))).toISOString(),understat,createdAt:now.toISOString(),signature:squadSignature(team),matchday:matchday.trim(),...result,credits:0,requests:3,usage:[]};
 }

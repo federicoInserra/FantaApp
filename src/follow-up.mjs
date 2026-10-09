@@ -5,6 +5,7 @@ import {HOSTED_API} from './deployment.mjs';
 import {recommendationIsStale,storedRecommendation,MAX_FOLLOW_UPS} from './analysis-state.mjs';
 
 export function followUpUnavailableReason(team,matchday=team.research?.matchday??''){
+  if(team.recommendation?.method==='statistical-engine')return 'Statistical engine offre spiegazioni statistiche e non una conversazione AI.';
   if(!team.recommendation)return 'Genera una proposta di formazione prima di fare una domanda.';
   if(recommendationIsStale(team.recommendation,team,team.research,matchday))return 'Rosa, regole, giornata o ricerca sono cambiati. Genera una nuova proposta prima di fare altre domande.';
   return '';
@@ -38,7 +39,7 @@ export async function askFollowUp({key,team,question,matchday,signal,fetchImpl=f
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export function renderFollowUp(team,{matchday=team.research?.matchday??'',draft='',pending=false,asking=false,saving=false,ready=true,error=''}={}){
-  if(!team.recommendation)return '';
+  if(!team.recommendation||team.recommendation.method==='statistical-engine')return '';
   const reason=followUpUnavailableReason(team,matchday);
   const label=modelInfo(team.recommendation.model??MODEL).label;
   const disabled=pending||!ready||Boolean(reason);
