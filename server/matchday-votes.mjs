@@ -11,7 +11,7 @@ export function parseMatchdayVotes(html,season,matchday,{now=new Date()}={}) {
   const matches=$('#match-menu li.match');
   if(matches.length!==10||matches.find('.match-pill[data-match-status]').length!==10)fail();
   const complete=matches.find('.match-pill[data-match-status="4"]').length===10;
-  const players=[],clubs=[];
+  const players=[],clubs=[];let coverageComplete=true;
   $('.team-table').each((i,e)=>{
     const table=$(e),club=clean(table.find('thead .team-name meta[itemprop="name"]').attr('content'));
     if(!club||table.find('thead img[title="Redazione Fantacalcio"]').length!==2)fail();
@@ -19,6 +19,7 @@ export function parseMatchdayVotes(html,season,matchday,{now=new Date()}={}) {
     if(providers[0]!=='Redazione Fantacalcio')fail();
     clubs.push(club);
     const rows=table.find('tbody tr');if(!rows.length||rows.length>40)fail();
+    const start=players.length;
     rows.each((j,e)=>{
       const row=$(e),link=row.find('a.player-name'),identity=/^https:\/\/www\.fantacalcio\.it\/serie-a\/squadre\/([a-z0-9-]+)\/[^/?#]+\/(\d+)$/.exec(link.attr('href')??'');
       const role=row.find('.role').attr('data-value')?.toUpperCase();
@@ -35,10 +36,12 @@ export function parseMatchdayVotes(html,season,matchday,{now=new Date()}={}) {
       const status=noVote&&!hasEvents?'unrated':vote!==null&&fantasyVote!==null&&conceded!==null?'rated':'unknown';
       players.push({id:identity[2],name:clean(link.text()),club,role,status,vote:status==='rated'?vote:null,fantasyVote:status==='rated'?fantasyVote:null,conceded});
     });
+    // A finished match with only placeholders can still be awaiting editorial votes.
+    if(!players.slice(start).some(p=>p.status==='rated'))coverageComplete=false;
   });
   if(clubs.length>20||new Set(clubs).size!==clubs.length||players.length>800||new Set(players.map(p=>p.id)).size!==players.length)fail();
   // All finished fixtures and all twenty populated team tables are needed to infer no vote for absent players.
-  return {version:1,provider:'Redazione Fantacalcio',season,matchday,sourceUrl:votesURL(season,matchday),retrievedAt:now.toISOString(),complete:complete&&clubs.length===20,clubs,players};
+  return {version:1,provider:'Redazione Fantacalcio',season,matchday,sourceUrl:votesURL(season,matchday),retrievedAt:now.toISOString(),complete:complete&&clubs.length===20&&coverageComplete,clubs,players};
 }
 const cache=new Map();
 export async function collectMatchdayVotes(season,matchday,{fetchImpl=fetch,now=new Date(),signal,useCache=true}={}) {

@@ -6,6 +6,7 @@ export function comparisonWinner(items) {
   if(items.length<2||items.some(i=>i.actual_result?.status!=='complete'||i.actual_result.late))return [];
   const rules=JSON.stringify(items[0].record.rules.slice(3,14));
   if(items.some(i=>JSON.stringify(i.record.rules.slice(3,14))!==rules))return [];
+  if(items.some(i=>i.actual_result.checkedAt!==items[0].actual_result.checkedAt||i.actual_result.provider!==items[0].actual_result.provider||i.actual_result.sourceUrl!==items[0].actual_result.sourceUrl))return [];
   const best=Math.max(...items.map(i=>i.actual_result.total));
   return items.filter(i=>Math.abs(i.actual_result.total-best)<.001).map(i=>i.method);
 }
@@ -46,7 +47,7 @@ export async function mountComparison(team) {
     const allComplete=items.length>=2&&items.every(i=>i.actual_result?.status==='complete'),winners=comparisonWinner(items);
     host.innerHTML=`<div class="comparison-toolbar"><label>Stagione<select id="comparison-season" ${busy?'disabled':''}>${seasons.map(s=>`<option value="${s}" ${s===selected.season?'selected':''}>${s}/${s+1}</option>`).join('')}</select></label><label>Giornata<select id="comparison-matchday" ${busy?'disabled':''}>${days.map(r=>`<option value="${r.matchday}" ${r.matchday===selected.matchday?'selected':''}>${r.matchday}</option>`).join('')}</select></label><button id="comparison-refresh" class="button button-outline" ${busy?'disabled':''}>${busy?'Aggiornamento…':'Aggiorna risultati'}</button></div>
       <p class="analysis-meta">${items.length}/3 metodi salvati. Voti: Redazione Fantacalcio. Bonus/malus classici, imbattibilità +1 e modificatore secondo le regole salvate. Sostituzioni stesso ruolo, ordine P/D/C/A.</p>
-      <p role="status">${escape(error||notice||(busy?'Raccolta dei voti e calcolo dei punteggi…':allComplete&&!winners.length?'Confronto non assegnato: controlla gli orari di generazione e le differenze fra le regole salvate.':'Il migliore viene indicato quando tutti i metodi salvati hanno risultati completi, le stesse regole e proposte generate prima della giornata.'))}</p>
+      <p role="status">${escape(error||notice||(busy?'Raccolta dei voti e calcolo dei punteggi…':allComplete&&!winners.length?'Confronto non assegnato: controlla gli orari di generazione e le regole salvate, oppure aggiorna tutti i risultati.':'Il migliore viene indicato quando tutti i metodi salvati hanno risultati completi, le stesse regole e proposte generate prima della giornata.'))}</p>
       ${renderComparisonCards(items)}`;
     host.querySelector('#comparison-season').addEventListener('change',e=>{selected=rounds.find(r=>r.season===Number(e.target.value));items=[];loadRound();});
     host.querySelector('#comparison-matchday').addEventListener('change',e=>{selected={season:selected.season,matchday:Number(e.target.value)};items=[];loadRound();});

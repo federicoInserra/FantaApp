@@ -46,6 +46,7 @@ test('vote parser validates the exact season and round, first editorial provider
   assert.equal(parseMatchdayVotes(voteHTML(f.votes,{status:'3'}),2026,8).complete,false);
   assert.throws(()=>parseMatchdayVotes(html.replace('title="Redazione Fantacalcio"','title="Unknown provider"'),2026,8));
   const malformed=html.replace('data-value="6"','data-value="999"');assert.equal(parseMatchdayVotes(malformed,2026,8).players[0].status,'unknown');
+  f.votes.players.filter(p=>p.club==='Club 0').forEach(p=>p.status='unrated');assert.equal(parseMatchdayVotes(voteHTML(f.votes),2026,8).complete,false);
 });
 test('vote collector bounds downloads, rejects redirects and upstream errors without falling back to averages',async()=>{
   const f=historyFixture(),html=voteHTML(f.votes);let url,options;
@@ -57,6 +58,7 @@ test('comparison handles ties and excludes late, incomplete or differently confi
   const f=historyFixture(),result=actualLineupScore(f.record,f.votes);
   const a={method:'deepseek',record:f.record,actual_result:result},b={method:'kimi',record:structuredClone(f.record),actual_result:{...result,total:70}};
   assert.deepEqual(comparisonWinner([a,b]),['kimi']);b.actual_result.total=result.total;assert.deepEqual(comparisonWinner([a,b]),['deepseek','kimi']);
+  b.actual_result.checkedAt='2026-10-04T12:00:00Z';assert.deepEqual(comparisonWinner([a,b]),[]);b.actual_result.checkedAt=result.checkedAt;
   b.actual_result.late=true;assert.deepEqual(comparisonWinner([a,b]),[]);b.actual_result.late=false;b.record.rules[4]='Massimo 1 sostituzioni per giornata.';assert.deepEqual(comparisonWinner([a,b]),[]);
   b.record.rules=f.record.rules;b.actual_result.status='pending';assert.deepEqual(comparisonWinner([a,b]),[]);
   f.record.recommendation.text='<script>alert(1)</script>';const output=renderComparisonCards([a]);assert.ok(output.includes('&lt;script&gt;'));assert.ok(!output.includes('<script>'));assert.ok(output.includes('Nessuna proposta salvata'));
