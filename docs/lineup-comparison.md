@@ -28,7 +28,7 @@ A winner or tie is shown among the saved methods only when at least two methods 
 
 ## Validation
 
-166 automated tests pass, including database isolation/overwrites across all five methods, atomic rollback, revision conflicts, migration, in-flight generation/scoring races, manual role filtering/assignment exclusion/module changes, exact prompt copying, ChatGPT response import/wrappers/Leghe IDs/invalid input, method switching, stale/superseded archive requests, empty pitches, substitutions, modifiers, published-vote parsing and comparison ties/exclusions. Browser verification used a disposable database and synthetic results for all five methods, checking explicit saves, reloads, independent manual choices and bench priorities; no paid model requests or production team changes were used for testing. The votes parser was also checked against a real public matchday page.
+167 automated tests pass, including database isolation/overwrites across all five methods, atomic rollback, revision conflicts, migration, in-flight generation/scoring races, manual role filtering/assignment exclusion/module changes, exact prompt copying, ChatGPT response import/wrappers/Leghe IDs/invalid input, method switching, stale/superseded archive requests, empty pitches, substitutions, modifiers, published-vote parsing and comparison ties/exclusions. Browser verification used a disposable database and synthetic results for all five methods, checking explicit saves, reloads, independent manual choices and bench priorities; no paid model requests or production team changes were used for testing. The votes parser was also checked against a real public matchday page.
 
 ## Background AI jobs
 

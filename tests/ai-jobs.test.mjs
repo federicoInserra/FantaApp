@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {createTeamStore} from '../server/team-store.mjs';
 import {handleAIJobs} from '../server/ai-jobs.mjs';
+import {handleTeams} from '../server/teams-api.mjs';
 import {analysisFingerprint} from '../src/analysis-state.mjs';
 import {AI_MODELS} from '../src/ai-models.mjs';
 import {AIJobs,elapsedLabel,jobProgress} from '../src/ai-jobs.mjs';
@@ -148,4 +149,12 @@ test('a lost database acknowledgement after atomic completion does not mark the 
 test('an already-completed start acknowledgement is published as terminal, not left waiting',async()=>{
  const updates=[];const client=new AIJobs({storage:memory(),schedule:()=>1,uuid:()=>job().id,onChange:u=>updates.push({status:u.job?.status,starting:u.starting,tracking:u.tracking}),fetchImpl:async(url,options)=>Response.json({job:options.method==='POST'?job('completed'):null})});
  await client.start({teamId:'team',model:AI_MODELS[0].id});assert.deepEqual(updates.at(-1),{status:'completed',starting:false,tracking:false});assert.equal(client.remembered('team'),null);
+});
+test('browser workspace saves cannot supply the internal job-completion capability',async()=>{
+ const f=await fixture();try{
+  const payload=f.body();await handleAIJobs(f.post(payload),f.options);const current=await f.store.read();
+  const request=new Request('https://app.test/api/teams',{method:'PUT',headers:{Origin:'https://app.test','Content-Type':'application/json'},body:JSON.stringify({revision:current.revision,state:current.state,mutationId:'browser-job-spoof-test',jobId:payload.id})});
+  assert.equal((await handleTeams(request,{store:f.store})).status,200);assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'running');
+  f.release();await Promise.all(f.tasks);assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'completed');
+ }finally{await f.close();}
 });
