@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {createManualDraft,changeManualFormation,selectManualPlayer,manualPlayerChoices,manualLineup,manualContextReason,copyRecommendationPrompt,buildManualRecommendation} from '../src/manual-lineup.mjs';
+import {createManualDraft,changeManualFormation,selectManualPlayer,manualPlayerChoices,manualLineup,importChatGPTLineup,manualContextReason,copyRecommendationPrompt,buildManualRecommendation} from '../src/manual-lineup.mjs';
 import {storedRecommendation,withAnalysisResult,analysisFingerprint} from '../src/analysis-state.mjs';
 import {buildRequest} from '../src/analysis.mjs';
 import {AI_MODELS} from '../src/ai-models.mjs';
@@ -73,6 +73,33 @@ test('ChatGPT copy uses the exact instructions and input generated for both exis
  assert.equal(prompt.researchId,f.team.research.id);assert.equal(prompt.teamFingerprint,analysisFingerprint(f.team));assert.ok(prompt.text.includes('Understat'));assert.ok(prompt.text.includes('regolamento'));
  assert.ok(manualContextReason(f.team,'8',now.getTime()+7*3600000));assert.throws(()=>copyRecommendationPrompt(f.team,'9',now));
 });
+test('ChatGPT imports full responses, code fences and quote wrappers without changing notes or saving raw responses',()=>{
+ const f=fixture(),previous=createManualDraft(f.team);previous.notes='Keep my note';const before=structuredClone(previous);
+ const lineup=structuredClone(f.record.recommendation.lineup);lineup.bench=['P2','P1','D7','D4','C6','C3','A5','A3'];
+ const json=JSON.stringify({...lineup,forecast:f.record.recommendation.forecast,analysis:'External explanation'});
+ for(const text of [json,`\uFEFF ${json} `,'```json\n'+json+'\n```','```JSON\n'+json+'\n```','```\n'+json+'\n```','"""\n'+json+'\n""""']){
+  const draft=importChatGPTLineup(text,f.team,previous);assert.deepEqual(manualLineup(draft,f.team),lineup);assert.equal(draft.notes,'Keep my note');assert.equal(draft.dirty,true);assert.equal(draft.chatgptResponse,text);assert.deepEqual(previous,before);
+  const rec=buildManualRecommendation({team:f.team,method:'chatgpt',draft,now,id:'imported'});assert.deepEqual(storedRecommendation(rec).lineup,lineup);assert.equal(rec.forecast,undefined);assert.equal(rec.chatgptResponse,undefined);assert.equal(rec.notes,previous.notes);
+ }
+});
+test('ChatGPT import accepts the supplied Leghe ID format and preserves each role’s bench priority',()=>{
+ const ids={P:['572','2170','2521'],D:['2296','5877','6869','4998','2120','5675','4994','7580'],C:['6372','4856','2194','7060','5844','4777','5680'],A:['4871','6060','6646','5995','7023']};
+ const team={formation:'3-4-3',players:Object.entries(ids).flatMap(([role,values])=>values.map(id=>({id:`leghe:${id}`,role,name:id,available:true})))};
+ const lineup={formation:'4-3-3',starters:['572','2296','5877','6869','4998','6372','4856','2194','4871','6060','6646'].map(id=>`leghe:${id}`),bench:['2170','2521','2120','5675','4994','7580','7060','5844','4777','5680','5995','7023'].map(id=>`leghe:${id}`)};
+ assert.deepEqual(manualLineup(importChatGPTLineup(JSON.stringify({...lineup,forecast:{low:64,high:88},analysis:'Proposta provvisoria'}),team,createManualDraft(team)),team),lineup);
+});
+test('invalid ChatGPT responses leave the current draft intact and explain JSON, module, ID and role errors',()=>{
+ const f=fixture(),draft=draftFor(f),before=structuredClone(draft),lineup=f.record.recommendation.lineup;
+ const invalid=[['',/Incolla/],['x'.repeat(100001),/troppo lunga/],['{broken',/JSON non valido/],['null',/modulo/],['[]',/modulo/],[JSON.stringify({...lineup,formation:'4-6-0'}),/modulo/],[JSON.stringify({...lineup,bench:null}),/elenchi/],[JSON.stringify({...lineup,starters:[0]}),/elenchi/],[JSON.stringify({...lineup,bench:[...lineup.bench,'P0']}),/duplicati/],[JSON.stringify({...lineup,starters:lineup.starters.map(id=>id==='P0'?'leghe:unknown':id)}),/non è nella rosa/],[JSON.stringify({...lineup,starters:lineup.starters.filter(id=>id!=='D0')}),/ruoli/],[JSON.stringify({...lineup,formation:'3-4-3'}),/ruoli/]];
+ for(const [text,error] of invalid){assert.throws(()=>importChatGPTLineup(text,f.team,draft),error);assert.deepEqual(draft,before);}
+ f.team.players.find(p=>p.id==='P0').available=false;assert.throws(()=>importChatGPTLineup(JSON.stringify(lineup),f.team,draft),/non è disponibile/);assert.deepEqual(draft,before);
+});
+test('only ChatGPT renders the escaped response input and importing stays separate from the save action',()=>{
+ const f=fixture(),draft=createManualDraft(f.team);draft.chatgptResponse='</textarea><script>attack</script>';
+ const html=renderManualFormation(f.team,draft,{method:'chatgpt'});assert.match(html,/id="chatgpt-response"/);assert.match(html,/Importa formazione/);assert.match(html,/id="manual-save"[^>]*disabled/);assert.doesNotMatch(html,/<script>/);
+ for(const options of [{loading:true},{busy:true},{loadError:true}])assert.match(renderManualFormation(f.team,draft,{method:'chatgpt',...options}),/id="chatgpt-import"[^>]*disabled/);
+ assert.doesNotMatch(renderManualFormation(f.team,draft,{method:'federico'}),/id="chatgpt-response"/);
+});
 test('manual records preserve attribution and notes, carry no fabricated forecast/cost and block stale copied prompts',()=>{
  const f=fixture(),draft=draftFor(f);draft.notes='My deliberate choice.';
  for(const method of ['federico','chatgpt']){
@@ -105,11 +132,11 @@ test('all five methods persist independently, score together and manual regenera
   await save(f.state);
   for(const method of ['kimi','statistical-engine','chatgpt','federico']){
    const current=(await store.read()).state,team=current.teams[0];let rec;
-   if(['chatgpt','federico'].includes(method)){let draft=draftFor(f);if(method==='federico'){draft=selectManualPlayer(draft,f.team,slot('bench','A',0),null);draft=selectManualPlayer(draft,f.team,slot('starters','A',0),'A3');}rec=buildManualRecommendation({team,method,draft,now,id:method});}
+   if(['chatgpt','federico'].includes(method)){let draft=method==='chatgpt'?importChatGPTLineup(JSON.stringify({...f.record.recommendation.lineup,analysis:'External response'}),team,createManualDraft(team)):draftFor(f);if(method==='federico'){draft=selectManualPlayer(draft,f.team,slot('bench','A',0),null);draft=selectManualPlayer(draft,f.team,slot('starters','A',0),'A3');}rec=buildManualRecommendation({team,method,draft,now,id:method});}
    else rec=f.rec(method);
    await save(withAnalysisResult(current,f.team.id,'recommendation',rec,analysisFingerprint(team)));
   }
-  let history=await store.history(f.team.id,2026,8);assert.equal(history.length,5);assert.equal(history.find(i=>i.method==='federico').record.recommendation.lineup.starters.at(-3),'A3');
+  let history=await store.history(f.team.id,2026,8);assert.equal(history.length,5);assert.equal(history.find(i=>i.method==='federico').record.recommendation.lineup.starters.at(-3),'A3');assert.deepEqual(history.find(i=>i.method==='chatgpt').record.recommendation.lineup,f.record.recommendation.lineup);
   const request=new Request('https://app.test/api/lineups',{method:'POST',headers:{Origin:'https://app.test','Content-Type':'application/json'},body:JSON.stringify({teamId:f.team.id,season:2026,matchday:8})});
   const response=await handleLineups(request,{store,collect:async()=>f.votes,now:new Date('2026-10-03T12:00:00Z')});assert.equal(response.status,200);history=(await response.json()).items;assert.ok(history.every(i=>i.actual_result.status==='complete'));
   const comparison=renderComparisonCards(history);assert.equal(COMPARISON_METHODS.length,5);assert.match(comparison,/ChatGPT/);assert.match(comparison,/Federico/);assert.ok(history.find(i=>i.method==='chatgpt').actual_result.total>0);

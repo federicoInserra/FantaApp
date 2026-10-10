@@ -51,6 +51,26 @@ export function manualLineup(draft,team) {
   try{validateLineup(lineup,team.players);}catch{throw Error('Completa i posti del modulo con giocatori disponibili, senza duplicati. Se la rosa è incompleta, riempi tutti i posti possibili per ruolo.');}
   return lineup;
 }
+export function importChatGPTLineup(text,team,previousDraft) {
+  if(typeof text!=='string'||!text.trim())throw Error('Incolla la risposta JSON di ChatGPT.');
+  if(text.length>100000)throw Error('La risposta è troppo lunga (massimo 100.000 caratteri).');
+  // Accept copied JSON, a complete Markdown code block or triple-quote wrappers.
+  const json=text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i,'$1').replace(/^"{3,}\s*([\s\S]*?)\s*"{3,}$/,'$1');
+  let result;try{result=JSON.parse(json);}catch{throw Error('JSON non valido. Copia l’intero oggetto da { a }, senza altri commenti.');}
+  if(!result||Array.isArray(result)||typeof result!=='object'||typeof result.formation!=='string'||!Object.hasOwn(FORMATIONS,result.formation))throw Error('La risposta deve contenere un modulo supportato nel campo formation.');
+  if(!Array.isArray(result.starters)||!Array.isArray(result.bench)||result.starters.length>11||result.bench.length>100||[...result.starters,...result.bench].some(id=>typeof id!=='string'||!id||id.length>150))throw Error('La risposta deve contenere starters e bench come elenchi di ID giocatore.');
+  const ids=[...result.starters,...result.bench];
+  if(new Set(ids).size!==ids.length)throw Error('Un giocatore compare più volte tra titolari e panchina. Correggi gli ID duplicati.');
+  const byId=new Map(team.players.map(p=>[p.id,p]));
+  const unknown=ids.find(id=>!byId.has(id));if(unknown)throw Error(`Il giocatore ${unknown} non è nella rosa selezionata. Verifica di aver usato il prompt di questa squadra.`);
+  const unavailable=ids.find(id=>byId.get(id).available===false);if(unavailable)throw Error(`Il giocatore ${byId.get(unavailable).name} non è disponibile. Correggi la risposta o aggiorna la rosa.`);
+  const lineup={formation:result.formation,starters:result.starters,bench:result.bench};
+  try{validateLineup(lineup,team.players);}catch{throw Error('I titolari non rispettano i ruoli e il numero di posti del modulo. Verifica la risposta di ChatGPT.');}
+  // Extra response fields do not become AI forecasts or costs on a manual record.
+  const draft=createManualDraft(team,lineup);
+  draft.notes=previousDraft?.notes??'';draft.chatgptResponse=text;draft.dirty=true;
+  return draft;
+}
 export function copyRecommendationPrompt(team,matchday=team.research?.matchday??'',now=new Date()) {
   const reason=manualContextReason(team,matchday,now.getTime());if(reason)throw Error(reason);
   const request=buildRequest(team,matchday,'',now,team.research);
