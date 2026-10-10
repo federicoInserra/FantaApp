@@ -5,8 +5,8 @@ const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&l
 const date=value=>new Date(value).toLocaleString('it-IT',{timeZone:'Europe/Rome'});
 const n=value=>value.toLocaleString('it-IT',{maximumFractionDigits:3});
 const statistic=(label,value,provenance)=>`<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd><small>${escape(provenance)}</small></div>`;
-export function renderPlayerAnalysis(team,id,{matchday=team.research?.matchday??'',now=Date.now(),fromPitch=false}={}){
-  const research=team.research,view=formationView(team,matchday,now);
+export function renderPlayerAnalysis(team,id,{matchday=team.research?.matchday??'',now=Date.now(),fromPitch=false,saved=false}={}){
+  const research=team.research,view=formationView(team,matchday,now,{saved});
   const prediction=view.ai?team.recommendation?.forecast?.players.find(p=>p.id===id):null;
   let html='';
   if(fromPitch){

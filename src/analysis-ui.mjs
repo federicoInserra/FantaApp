@@ -11,6 +11,7 @@ import {askFollowUp,renderFollowUp,followUpUnavailableReason} from './follow-up.
 import { TAVILY_KEY_STORAGE, researchSquad, staleReason, FIELDS } from './research.mjs';
 import {MANUAL_METHODS,isManualMethod,recommendationLabel} from './recommendation-methods.mjs';
 import {createManualDraft,manualContextReason,copyRecommendationPrompt,buildManualRecommendation} from './manual-lineup.mjs';
+import {MethodLineups,selectionKey,selectedLineupTeam} from './method-lineups.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
 try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Legacy credentials are optional. */ }
@@ -39,43 +40,25 @@ function hydrate(team) {
   let entry=analyses.get(team.id);
   if(!entry){entry={matchday:team.research?.matchday??'',model:team.recommendation?.method===ENGINE_ID||isManualMethod(team.recommendation?.method)?team.recommendation.method:team.recommendation?.model??DEFAULT_MODEL};analyses.set(team.id,entry);}
   if(entry.research?.id!==team.research?.id)entry.matchday=team.research?.matchday??'';
-  if(entry.recommendation?.id!==team.recommendation?.id){entry.followUpDraft='';entry.followUpError='';}
+  if(!entry.history)entry.history=new MethodLineups();
+  if(entry.recommendation?.id!==team.recommendation?.id){entry.followUpDraft='';entry.followUpError='';entry.history.invalidate();delete entry.previewFormation;}
   entry.research=team.research??null;entry.recommendation=team.recommendation??null;
   return entry;
 }
-export function mountAnalysis(team) { visibleTeam = team; hydrate(team); refresh(); }
+export function mountAnalysis(team) { visibleTeam = team; const entry=hydrate(team);entry.history.invalidate();delete entry.previewFormation;refresh(); }
+export function changeAnalysisFormation(formation){const entry=analyses.get(visibleTeam?.id);if(!entry)return;entry.previewFormation=formation??entry.history.current?.record?.recommendation.lineup.formation;refresh();}
 function manualEntry(team,entry,method=entry.model){
-  const context=JSON.stringify([fingerprint(team),entry.research?.understat?.season,entry.matchday]);
-  if(entry.manualContext!==context){entry.manualContext=context;entry.manualDrafts={};}
+  entry.manualDrafts??={};const selection=entry.history.current;
   let item=entry.manualDrafts[method];
-  if(!item){
-    const rec=team.recommendation,compatible=rec?.method===method&&rec.matchday===entry.matchday&&rec.researchId===entry.research?.id&&rec.teamFingerprint===fingerprint(team);
-    const known=Number.isInteger(entry.research?.understat?.season)&&/^(?:giornata\s*)?\d{1,2}(?:[ª°])?$/i.test(entry.matchday.trim());
+  if(!item||item.selection!==selection||item.state!==selection.state){
+    const rec=selection.record?.recommendation,compatible=rec?.method===method&&rec.teamFingerprint===fingerprint(team);
     const draft=createManualDraft(team,compatible?rec.lineup:null);draft.notes=compatible?rec.notes??'':'';
-    item={draft,state:compatible||!known?'ready':'new',savedId:compatible?rec.id:null};entry.manualDrafts[method]=item;
+    item={draft,selection,state:selection.state,error:selection.error,savedId:compatible?rec.id:null,notice:compatible?`Formazione ${recommendationLabel(rec)} caricata dal database.`:rec?'La rosa o le regole sono cambiate rispetto alla formazione salvata. Prepara una nuova scelta.':''};entry.manualDrafts[method]=item;
   }
   return item;
 }
 function promptChangedReason(team,entry,item){
   return item.prompt&&(item.prompt.researchId!==entry.research?.id||item.prompt.teamFingerprint!==fingerprint(team)||item.prompt.matchday!==entry.matchday)?'I dati sono cambiati dopo la copia del prompt. Copialo di nuovo e verifica la formazione prima di salvarla.':'';
-}
-async function loadManual(team,entry,item){
-  if(item.state!=='new')return;
-  item.state='loading';item.error='';refresh();
-  const method=entry.model;
-  try{
-    const match=/\d{1,2}/.exec(entry.matchday),params=new URLSearchParams({teamId:team.id,season:entry.research.understat.season,matchday:Number(match[0])});
-    const response=await fetch(`/api/lineups?${params}`,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(20000)});
-    if(!response.ok)throw Error('Impossibile caricare la formazione precedente. Riprova prima di salvare.');
-    const data=await response.json();if(!Array.isArray(data.items))throw Error('Archivio delle formazioni non disponibile.');
-    const rec=data.items.find(i=>i.method===method)?.record?.recommendation;
-    if(rec&&!item.draft.dirty){
-      if(rec.teamFingerprint===fingerprint(team)){item.draft=createManualDraft(team,rec.lineup);item.draft.notes=rec.notes??'';item.savedId=rec.id;item.notice=`Formazione ${recommendationLabel(rec)} caricata dal database.`;}
-      else item.notice='La rosa o le regole sono cambiate rispetto alla formazione salvata. Prepara una nuova scelta.';
-    }
-    item.state='ready';
-  }catch(error){item.state='error';item.error=error.message;}
-  if(visibleTeam?.id===team.id&&entry.model===method)refresh();
 }
 async function copyManualPrompt(team,entry,item){
   try{
@@ -103,6 +86,11 @@ function refresh() {
   const team = visibleTeam;
   let entry = analyses.get(team.id);
   if (!entry) entry=hydrate(team);
+  if(entry.history.current?.key!==selectionKey(team,entry.model,entry.matchday)){
+    entry.history.select(team,entry.model,entry.matchday,()=>{if(visibleTeam?.id===team.id)refresh();});return;
+  }
+  const selection=entry.history.current,selected=selectedLineupTeam(team,selection.record),rec=selected.recommendation;
+  const canFollowUp=rec&&rec.id===team.recommendation?.id;
   const busy = pending?.teamId === team.id;
   const reason = staleReason(entry.research,team,entry.matchday);
   const engine=entry.model===ENGINE_ID,manual=isManualMethod(entry.model),item=manual?manualEntry(team,entry):null;
@@ -112,15 +100,15 @@ function refresh() {
       <section class="research-step analysis-surface" aria-labelledby="research-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">01</span><div><p class="eyebrow">LE FONTI</p><h3 id="research-title">Aggiorna i dati</h3></div></div><span class="analysis-chip chip-free">Nessun costo AI</span></header><p class="analysis-description">Statistiche e probabili formazioni, direttamente dalle fonti.</p>
         ${entry.research?`<div class="research-source-grid">${understatView(entry.research.understat)}${dataView(entry.research)}</div>`:'<div class="research-empty"><span aria-hidden="true">↻</span><p>La tua raccolta parte da qui.</p><small>Fantacalcio per voti e impiego, Understat per xG e xA.</small></div>'}
         <p id="research-warning" class="analysis-alert" ${reason?'':'hidden'}>${escape(reason)}</p><footer class="analysis-card-footer"><span class="analysis-meta">${entry.research?'Raccolta salvata · condivisa tra i dispositivi':'Ogni aggiornamento sostituisce il precedente'}</span><button id="ai-research" class="button button-outline" ${pending||!understatURL||!team.players.length?'disabled':''}>${busy&&pending.kind==='research'?'Aggiornamento in corso…':'Aggiorna dati'} <span aria-hidden="true">↻</span></button></footer></section>
-      <section class="research-step analysis-surface analysis-model-card" aria-labelledby="model-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">02</span><div><p class="eyebrow">LA SCELTA</p><h3 id="model-title">Scegli la formazione</h3></div></div></header><p class="analysis-description">Scegli il metodo per valutare la rosa con le regole della tua lega.</p><div class="model-picker"><label for="ai-model">Metodo</label><select id="ai-model" ${pending?'disabled':''}>${[...AI_MODELS,{id:ENGINE_ID,label:'Statistical engine'},...MANUAL_METHODS].map(model=>`<option value="${model.id}" ${model.id===entry.model?'selected':''}>${model.label}</option>`).join('')}</select><p class="analysis-meta">Usa la raccolta salvata, senza nuove ricerche.</p></div><a class="analysis-text-link" href="#regole/${encodeURIComponent(team.id)}">Regole della lega <span aria-hidden="true">↗</span></a>${manual?`<p class="analysis-meta">${entry.model==='chatgpt'?'Copia il prompt e inserisci sul campo la formazione ottenuta nella tua chat.':'Componi la formazione sul campo qui sotto e salvala.'} Nessuna chiamata AI dall’app.</p>${entry.model==='chatgpt'?`<button id="manual-copy-prompt" type="button" class="button button-outline" ${pending||reason?'disabled':''}>Copia prompt per ChatGPT</button>${item.prompt?`<details id="manual-prompt-details" class="analysis-disclosure" ${item.promptFallback?'open':''}><summary>Prompt completo da copiare</summary><p class="field-hint">Istruzioni e dati identici a quelli usati da DeepSeek e Kimi.</p><label for="manual-prompt-text">Prompt</label><textarea id="manual-prompt-text" readonly rows="12">${escape(item.prompt.text)}</textarea></details>`:''}`:''}`:`<details class="analysis-disclosure pricing-disclosure"><summary>Costi e dettagli <span aria-hidden="true">+</span></summary><div class="analysis-disclosure-body"><p>${engine?'Statistical engine esegue simulazioni locali, senza chiave né costo AI. Supporta il profilo Classic predefinito (0–5 sostituzioni); mostra ipotesi e dati mancanti.':'Kimi ha tariffe più alte.'} ${engine?'Calcolo limitato a 1.000 scenari e 136 candidati, con possibilità di annullare. Gli orari devono essere verificati e futuri per tutti i giocatori disponibili.':'Il costo in USD appare dopo la risposta e usa i token riportati e le tariffe standard del 08/10/2026, senza imposte o accordi personalizzati.'}</p><p>Ogni proposta è archiviata per metodo e giornata. Rigenerare lo stesso metodo nella stessa giornata sostituisce solo quella proposta.</p><a class="analysis-text-link" href="${engine?'https://understat.com':modelInfo(entry.model).url}" target="_blank" rel="noopener noreferrer">${engine?'Fonte statistica ↗':'Tariffe Fireworks ↗'}</a></div></details><button id="ai-analyze" class="button button-primary" ${pending||(!engine&&!fireworksReady())||reason?'disabled':''}>${busy&&pending.kind==='analysis'?'Analisi in corso…':'Suggerisci formazione'} <span aria-hidden="true">→</span></button>`}</section>
+      <section class="research-step analysis-surface analysis-model-card" aria-labelledby="model-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">02</span><div><p class="eyebrow">LA SCELTA</p><h3 id="model-title">Scegli la formazione</h3></div></div></header><p class="analysis-description">Scegli il metodo per valutare la rosa con le regole della tua lega.</p><div class="model-picker"><label for="ai-model">Metodo</label><select id="ai-model" ${pending?'disabled':''}>${[...AI_MODELS,{id:ENGINE_ID,label:'Statistical engine'},...MANUAL_METHODS].map(model=>`<option value="${model.id}" ${model.id===entry.model?'selected':''}>${model.label}</option>`).join('')}</select><p class="analysis-meta">Usa la raccolta salvata, senza nuove ricerche.</p></div><a class="analysis-text-link" href="#regole/${encodeURIComponent(team.id)}">Regole della lega <span aria-hidden="true">↗</span></a>${manual?`<p class="analysis-meta">${entry.model==='chatgpt'?'Copia il prompt e inserisci sul campo la formazione ottenuta nella tua chat.':'Componi la formazione sul campo qui sotto e salvala.'} Nessuna chiamata AI dall’app.</p>${entry.model==='chatgpt'?`<button id="manual-copy-prompt" type="button" class="button button-outline" ${pending||reason||selection.state!=='ready'?'disabled':''}>Copia prompt per ChatGPT</button>${item.prompt?`<details id="manual-prompt-details" class="analysis-disclosure" ${item.promptFallback?'open':''}><summary>Prompt completo da copiare</summary><p class="field-hint">Istruzioni e dati identici a quelli usati da DeepSeek e Kimi.</p><label for="manual-prompt-text">Prompt</label><textarea id="manual-prompt-text" readonly rows="12">${escape(item.prompt.text)}</textarea></details>`:''}`:''}`:`<details class="analysis-disclosure pricing-disclosure"><summary>Costi e dettagli <span aria-hidden="true">+</span></summary><div class="analysis-disclosure-body"><p>${engine?'Statistical engine esegue simulazioni locali, senza chiave né costo AI. Supporta il profilo Classic predefinito (0–5 sostituzioni); mostra ipotesi e dati mancanti.':'Kimi ha tariffe più alte.'} ${engine?'Calcolo limitato a 1.000 scenari e 136 candidati, con possibilità di annullare. Gli orari devono essere verificati e futuri per tutti i giocatori disponibili.':'Il costo in USD appare dopo la risposta e usa i token riportati e le tariffe standard del 08/10/2026, senza imposte o accordi personalizzati.'}</p><p>Ogni proposta è archiviata per metodo e giornata. Rigenerare lo stesso metodo nella stessa giornata sostituisce solo quella proposta.</p><a class="analysis-text-link" href="${engine?'https://understat.com':modelInfo(entry.model).url}" target="_blank" rel="noopener noreferrer">${engine?'Fonte statistica ↗':'Tariffe Fireworks ↗'}</a></div></details><button id="ai-analyze" class="button button-primary" ${pending||(!engine&&!fireworksReady())||reason?'disabled':''}>${busy&&pending.kind==='analysis'?'Analisi in corso…':'Suggerisci formazione'} <span aria-hidden="true">→</span></button>`}</section>
     </div>
     <div class="analysis-feedback ${busy?'is-pending':''}"><p id="ai-progress" role="status">${escape(busy?entry.progress||'Richiesta in corso…':pending?'È in corso una richiesta per un’altra squadra.':!manual&&!engine&&!fireworksReady()?(HOSTED_API?'Servizio AI non disponibile. Puoi comunque aggiornare i dati.':'Servizi AI non configurati.'):!understatURL?'Servizio Understat non configurato.':entry.notice||'')}</p>${busy&&pending.phase!=='saving'?'<button id="ai-cancel" class="button button-outline">Annulla</button>':''}</div>
     ${entry.error?`<p class="import-error analysis-alert" role="alert">${escape(entry.error)}</p>`:''}
-    ${entry.recommendation&&!manual?recommendationView(entry.recommendation,recommendationIsStale(entry.recommendation,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(team,{matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
+    ${rec&&!manual?recommendationView(rec,recommendationIsStale(rec,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(selected,{unavailableReason:canFollowUp?followUpUnavailableReason(team,entry.matchday):'Questa proposta è archiviata. Genera una nuova proposta con questo metodo prima di continuare la conversazione.',matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);
-  host.querySelector('#ai-model').onchange=event=>{entry.model=event.target.value;refresh();};
+  host.querySelector('#ai-model').onchange=event=>{entry.model=event.target.value;entry.history.invalidate();delete entry.previewFormation;entry.followUpDraft='';entry.followUpError='';entry.error='';entry.notice='';refresh();};
   host.querySelector('#ai-analyze')?.addEventListener('click',()=>run('analysis',team,entry));
   host.querySelector('#manual-copy-prompt')?.addEventListener('click',()=>copyManualPrompt(team,entry,item));
   const question=host.querySelector('#follow-up-question');
@@ -129,8 +117,7 @@ function refresh() {
     host.querySelector('#follow-up-form').onsubmit=event=>{event.preventDefault();if(!question.disabled&&question.value.trim())run('followUp',team,entry);};
   }
   host.querySelectorAll('[data-follow-up-question]').forEach(button=>{button.onclick=()=>{if(!question||question.disabled)return;question.value=button.dataset.followUpQuestion;question.dispatchEvent(new Event('input',{bubbles:true}));question.focus();};});
-  onContextChange?.(team,entry.matchday,manual?{method:entry.model,draft:item.draft,busy:Boolean(pending),loading:item.state==='loading'||item.state==='new',loadError:item.state==='error',reason:manualContextReason(team,entry.matchday)||promptChangedReason(team,entry,item),notice:item.notice??'',error:item.error??'',onChange:draft=>{item.draft=draft;item.notice='';item.error='';},onSave:()=>run('manual',team,entry),onRetry:()=>{item.state='new';loadManual(team,entry,item);}}:null);
-  if(manual&&item.state==='new')loadManual(team,entry,item);
+  onContextChange?.(team,entry.matchday,manual?{method:entry.model,draft:item.draft,busy:Boolean(pending),loading:item.state==='loading'||item.state==='new',loadError:item.state==='error',reason:manualContextReason(team,entry.matchday)||promptChangedReason(team,entry,item),notice:item.notice??'',error:item.error??'',onChange:draft=>{item.draft=draft;item.notice='';item.error='';},onSave:()=>run('manual',team,entry),onRetry:()=>{entry.history.invalidate();refresh();}}:null,{selection,team:selected,previewFormation:entry.previewFormation,onRetry:()=>{entry.history.invalidate();refresh();}});
 }
 async function run(kind,team,entry) {
   if (pending) return;
@@ -163,6 +150,7 @@ async function run(kind,team,entry) {
       await persist('recommendation',rec);
       item.draft.dirty=false;item.savedId=rec.id;item.error='';item.notice=`Formazione ${recommendationLabel(rec)} salvata nel database e in Confronto.`;entry.notice=item.notice;
     } else if(kind==='followUp') {
+      if(entry.history.current?.record?.recommendation.id!==snapshot.recommendation?.id)throw Error('La proposta selezionata è archiviata. Genera una nuova proposta prima di continuare la conversazione.');
       const result=await askFollowUp({key,team:snapshot,question,matchday,signal:controller.signal,includeUsage:true});
       controller.signal.throwIfAborted();
       await persist('followUp',{id:crypto.randomUUID(),createdAt:new Date().toISOString(),question,answer:result.answer,model:result.model,aiUsage:result.aiUsage,recommendationId:snapshot.recommendation.id,previousFollowUpId:snapshot.recommendation.followUps?.at(-1)?.id??null,matchday});

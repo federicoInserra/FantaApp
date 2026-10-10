@@ -40,9 +40,9 @@ export async function askFollowUp({key,team,question,matchday,signal,fetchImpl=f
 }
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-export function renderFollowUp(team,{matchday=team.research?.matchday??'',draft='',pending=false,asking=false,saving=false,ready=true,error=''}={}){
+export function renderFollowUp(team,{matchday=team.research?.matchday??'',draft='',pending=false,asking=false,saving=false,ready=true,error='',unavailableReason=''}={}){
   if(!team.recommendation||team.recommendation.method==='statistical-engine'||isManualMethod(team.recommendation.method))return '';
-  const reason=followUpUnavailableReason(team,matchday);
+  const reason=unavailableReason||followUpUnavailableReason(team,matchday);
   const label=modelInfo(team.recommendation.model??MODEL).label;
   const disabled=pending||!ready||Boolean(reason);
   const history=team.recommendation.followUps??[];

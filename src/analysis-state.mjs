@@ -73,9 +73,12 @@ export function storedRecommendation(data){
 export function recommendationIsStale(recommendation,team,research,matchday,now=Date.now()){
   return (recommendation.method===ENGINE_ID&&engineDeadlinePassed(research,now))||!research||recommendation.researchId!==research.id||recommendation.teamFingerprint!==analysisFingerprint(team)||recommendation.matchday!==matchday;
 }
-export function formationView(team,matchday=team.research?.matchday??'',now=Date.now()){
+export function formationView(team,matchday=team.research?.matchday??'',now=Date.now(),{saved=false}={}){
   const rec=team.recommendation;
   let reason='';
+  if(saved&&rec?.lineup&&team.formation===rec.lineup.formation){
+    try{return {...validateLineup(rec.lineup,team.players),ai:true,reason:recommendationIsStale(rec,team,team.research,matchday,now)||staleReason(team.research,team,matchday,now)?'Formazione salvata per questa giornata. I dati attuali sono cambiati o da aggiornare: verifica le scelte prima della consegna.':''};}catch{ /* Invalid archive data must not be applied. */ }
+  }
   if(rec){
     if(recommendationIsStale(rec,team,team.research,matchday,now)||staleReason(team.research,team,matchday,now))reason=isManualMethod(rec.method)?`La formazione ${recommendationLabel(rec)} è superata. Verifica i dati e salvala di nuovo.`:rec.method===ENGINE_ID?'La proposta Statistical engine è superata. Generane una nuova con dati aggiornati.':'La proposta AI è superata. Generane una nuova con dati aggiornati.';
     else if(!rec.lineup)reason='La proposta precedente contiene solo testo. Generane una nuova per visualizzarla sul campo.';
