@@ -1,6 +1,6 @@
 // Bump the version whenever an app-shell asset changes.
 const CACHE_PREFIX = `fantaapp-${self.registration.scope}-`;
-const CACHE = `${CACHE_PREFIX}v44`;
+const CACHE = `${CACHE_PREFIX}v45`;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './data/fantamaster.json', './data/leghe.json', './src/catalog.mjs', './src/storage.mjs', './src/cloud-sync.mjs', './src/cloud-state.mjs', './src/import-team.mjs', './src/app.mjs', './src/recommendation-methods.mjs', './src/method-lineups.mjs', './src/manual-lineup.mjs', './src/manual-lineup-ui.mjs', './src/comparison-ui.mjs', './src/rules.mjs', './src/analysis.mjs', './src/statistical-engine.mjs', './src/ai-models.mjs', './src/follow-up.mjs', './src/analysis-state.mjs', './src/ai-api.mjs', './src/calendar.mjs', './src/research.mjs', './src/primary-research.mjs', './src/understat.mjs', './src/deployment.mjs', './src/analysis-ui.mjs', './src/analysis-presentation.mjs', './src/lineup.mjs', './src/formation-view.mjs', './src/forecast.mjs', './src/player-analysis.mjs', './src/pwa.mjs',

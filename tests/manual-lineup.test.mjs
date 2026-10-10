@@ -25,15 +25,36 @@ test('manual editor starts empty, renders eleven role-filtered slots and validat
  const html=renderManualFormation(f.team,draft,{method:'federico'});assert.equal([...html.matchAll(/data-section="starters"/g)].length,11);assert.match(html,/Salva formazione Federico/);assert.match(html,/id="manual-save"[^>]*disabled/);
  assert.deepEqual(manualLineup(draftFor(f),f.team),f.record.recommendation.lineup);
 });
-test('only available players of the selected role can be chosen; an assigned player swaps without duplicates',()=>{
- const f=fixture(),before=structuredClone(f.team);let draft=draftFor(f);
+test('selected players are excluded across pitch and bench until cleared, and duplicate assignments cannot swap positions',()=>{
+ const f=fixture(),before=structuredClone(f.team);let draft=createManualDraft(f.team);
  assert.equal(manualPlayerChoices(f.team,draft,'D').length,8);assert.ok(manualPlayerChoices(f.team,draft,'D').every(c=>c.player.role==='D'));
- draft=selectManualPlayer(draft,f.team,slot('starters','D',0),'D4');assert.equal(draft.starters.D[0],'D4');assert.equal(draft.bench.D[0],'D0');
- draft=selectManualPlayer(draft,f.team,slot('bench','D',1),'D0');assert.equal(draft.bench.D[1],'D0');assert.equal(draft.bench.D[0],'D5');
- const lineup=manualLineup(draft,f.team);assert.equal(new Set([...lineup.starters,...lineup.bench]).size,25);assert.deepEqual(f.team,before);
+ draft=selectManualPlayer(draft,f.team,slot('starters','D',0),'D0');
+ assert.ok(!manualPlayerChoices(f.team,draft,'D').some(c=>c.player.id==='D0'));
+ const selected=structuredClone(draft);
+ assert.throws(()=>selectManualPlayer(draft,f.team,slot('starters','D',1),'D0'),/già selezionato/);
+ assert.throws(()=>selectManualPlayer(draft,f.team,slot('bench','D',0),'D0'),/già selezionato/);assert.deepEqual(draft,selected);
+ draft=selectManualPlayer(draft,f.team,slot('bench','D',0),'D4');
+ assert.ok(!manualPlayerChoices(f.team,draft,'D').some(c=>c.player.id==='D4'));
+ assert.throws(()=>selectManualPlayer(draft,f.team,slot('starters','D',1),'D4'),/già selezionato/);
+ draft=selectManualPlayer(draft,f.team,slot('starters','D',0),null);
+ assert.ok(manualPlayerChoices(f.team,draft,'D').some(c=>c.player.id==='D0'));
+ draft=selectManualPlayer(draft,f.team,slot('bench','D',1),'D0');assert.equal(draft.bench.D[1],'D0');
+ draft=selectManualPlayer(draft,f.team,slot('bench','D',0),null);
+ draft=selectManualPlayer(draft,f.team,slot('starters','D',0),'D4');assert.equal(draft.starters.D[0],'D4');assert.equal(draft.bench.D[0],null);assert.deepEqual(f.team,before);
  assert.throws(()=>selectManualPlayer(draft,f.team,slot('starters','D',0),'A0'),/stesso ruolo/);
  assert.throws(()=>selectManualPlayer(draft,f.team,slot('starters','D',99),'D0'),/Posizione/);
  f.team.players.find(p=>p.id==='D7').available=false;assert.ok(!manualPlayerChoices(f.team,draft,'D').some(c=>c.player.id==='D7'));assert.throws(()=>selectManualPlayer(draft,f.team,slot('starters','D',0),'D7'));
+});
+test('replacing a choice frees the previous player and saved lineups exclude all assigned players from the picker',()=>{
+ const f=fixture();let draft=draftFor(f);
+ assert.deepEqual(manualPlayerChoices(f.team,draft,'A'),[]);
+ draft=selectManualPlayer(draft,f.team,slot('bench','A',0),null);
+ assert.deepEqual(manualPlayerChoices(f.team,draft,'A').map(c=>c.player.id),['A3']);
+ draft=selectManualPlayer(draft,f.team,slot('starters','A',0),'A3');
+ assert.deepEqual(manualPlayerChoices(f.team,draft,'A').map(c=>c.player.id),['A0']);
+ draft=selectManualPlayer(draft,f.team,slot('bench','A',0),'A0');assert.deepEqual(manualPlayerChoices(f.team,draft,'A'),[]);
+ assert.deepEqual(manualPlayerChoices(f.team,changeManualFormation(draft,f.team,'3-4-3'),'A'),[]);
+ assert.equal(new Set([...manualLineup(draft,f.team).starters,...manualLineup(draft,f.team).bench]).size,25);
 });
 test('formation changes preserve choices and bench priority, moving overflow to bench and promoting first reserves',()=>{
  const f=fixture(),draft=draftFor(f),original=structuredClone(draft);
@@ -84,7 +105,7 @@ test('all five methods persist independently, score together and manual regenera
   await save(f.state);
   for(const method of ['kimi','statistical-engine','chatgpt','federico']){
    const current=(await store.read()).state,team=current.teams[0];let rec;
-   if(['chatgpt','federico'].includes(method)){let draft=draftFor(f);if(method==='federico')draft=selectManualPlayer(draft,f.team,slot('starters','A',0),'A3');rec=buildManualRecommendation({team,method,draft,now,id:method});}
+   if(['chatgpt','federico'].includes(method)){let draft=draftFor(f);if(method==='federico'){draft=selectManualPlayer(draft,f.team,slot('bench','A',0),null);draft=selectManualPlayer(draft,f.team,slot('starters','A',0),'A3');}rec=buildManualRecommendation({team,method,draft,now,id:method});}
    else rec=f.rec(method);
    await save(withAnalysisResult(current,f.team.id,'recommendation',rec,analysisFingerprint(team)));
   }

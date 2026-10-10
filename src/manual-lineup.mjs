@@ -38,17 +38,13 @@ export function changeManualFormation(draft,team,formation) {
 export function selectManualPlayer(draft,team,{section,role,index},id) {
   if(!['starters','bench'].includes(section)||!roles.includes(role)||!Number.isInteger(index)||index<0||index>=draft[section][role].length)throw Error('Posizione non valida.');
   if(id!==null&&!available(team,role).some(p=>p.id===id))throw Error('Scegli un giocatore disponibile dello stesso ruolo.');
-  const next=structuredClone(draft),old=next[section][role][index];
-  if(id!==null){
-    for(const part of ['starters','bench'])for(const r of roles){const other=next[part][r].indexOf(id);if(other>=0&&(part!==section||r!==role||other!==index))next[part][r][other]=old;}
-  }
+  if(id!==null)for(const part of ['starters','bench'])for(const r of roles){const other=draft[part][r].indexOf(id);if(other>=0&&(part!==section||r!==role||other!==index))throw Error('Giocatore già selezionato. Svuota prima la sua posizione sul campo o in panchina.');}
+  const next=structuredClone(draft);
   next[section][role][index]=id;next.dirty=true;return next;
 }
 export function manualPlayerChoices(team,draft,role) {
-  return available(team,role).map(player=>{
-    let assigned='';for(const part of ['starters','bench']){const index=draft[part][role].indexOf(player.id);if(index>=0)assigned=`${part==='starters'?'Titolare':'Riserva'} ${index+1}`;}
-    return {player,assigned};
-  });
+  const selected=new Set(['starters','bench'].flatMap(part=>roles.flatMap(r=>draft[part][r])).filter(Boolean));
+  return available(team,role).filter(player=>!selected.has(player.id)).map(player=>({player}));
 }
 export function manualLineup(draft,team) {
   const lineup={formation:draft.formation,starters:roles.flatMap(r=>draft.starters[r].filter(Boolean)),bench:roles.flatMap(r=>draft.bench[r].filter(Boolean))};
