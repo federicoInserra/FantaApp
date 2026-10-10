@@ -10,6 +10,9 @@
     "api/ai.mjs": {
       "maxDuration": 300
     },
+    "api/ai-jobs.mjs": {
+      "maxDuration": 300
+    },
     "api/ai-status.mjs": {
       "maxDuration": 10
     },

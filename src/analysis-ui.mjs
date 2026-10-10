@@ -12,6 +12,7 @@ import { TAVILY_KEY_STORAGE, researchSquad, staleReason, FIELDS } from './resear
 import {MANUAL_METHODS,isManualMethod,recommendationLabel} from './recommendation-methods.mjs';
 import {createManualDraft,manualContextReason,copyRecommendationPrompt,buildManualRecommendation} from './manual-lineup.mjs';
 import {MethodLineups,selectionKey,selectedLineupTeam} from './method-lineups.mjs';
+import {AIJobs,jobProgress,elapsedLabel} from './ai-jobs.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
 try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Legacy credentials are optional. */ }
@@ -24,13 +25,46 @@ if (HOSTED_API) {
   try { localStorage.removeItem(API_KEY_STORAGE); localStorage.removeItem(TAVILY_KEY_STORAGE); } catch { /* Never used even if removal fails. */ }
 }
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-let saveResult,onContextChange;
+let saveResult,onContextChange,reloadServerResult;
+const handledJobs=new Set();
+const serverJobs=HOSTED_API?new AIJobs({onChange:update=>{
+  const entry=analyses.get(update.teamId);if(!entry)return;
+  const job=update.job;
+  if(job?.status==='running'||update.tracking&&(update.starting||update.error)){
+    if(!pending||pending.serverJob&&pending.teamId===update.teamId)pending={kind:'analysis',teamId:update.teamId,serverJob:true};
+    entry.serverJob=job;entry.progress=job?`${modelInfo(job.model).label} sta preparando la proposta sul server.`:'Avvio dell’analisi… Attendi la conferma prima di chiudere l’app.';
+    if(job)entry.model=job.model;
+    entry.error=update.error||'';
+  }else{
+    entry.serverJob=null;
+    if(pending?.serverJob&&pending.teamId===update.teamId)pending=null;
+    if(job?.status==='failed')entry.error=job.error||'Analisi non riuscita. La proposta precedente è conservata.';
+    if(job?.status==='completed'&&!handledJobs.has(job.id)){handledJobs.add(job.id);applyServerJob(job);}
+    else if(update.error)entry.error=update.error;
+  }
+  refresh();
+}}):null;
+async function applyServerJob(job){
+  const entry=analyses.get(job.teamId);if(!entry)return;
+  entry.serverResultPending=job;entry.progress='Caricamento della proposta salvata…';
+  try{
+    const team=await reloadServerResult();
+    if(team?.id===job.teamId){hydrate(team);if(visibleTeam?.id===team.id)visibleTeam=team;}
+    // reloadServerResult can return the currently visible team when navigating away.
+    entry.history.invalidate();entry.serverResultPending=null;entry.error='';entry.notice='Proposta salvata nel database e in Confronto.';
+  }catch{entry.error='La proposta è salvata sul server. Ricarica il risultato quando torna la connessione.';}
+  refresh();
+}
 const fingerprint = analysisFingerprint;
 const dateLabel = date => new Date(date).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
 export function setupAnalysis(options = {}) {
   saveResult=options.saveResult;
   onContextChange=options.onContextChange;
+  reloadServerResult=options.reloadServerResult;
   if (HOSTED_API) {
+    const wake=()=>{if(document.visibilityState!=='hidden')serverJobs.wake();};
+    document.addEventListener('visibilitychange',wake);window.addEventListener('online',wake);window.addEventListener('pageshow',wake);
+    setInterval(()=>{const timer=document.querySelector('#ai-job-timer'),job=analyses.get(visibleTeam?.id)?.serverJob;if(timer&&job)timer.textContent=elapsedLabel(job.startedAt);},1000);
     getAIStatus({signal:AbortSignal.timeout(10000)})
       .then(value=>{serverStatus=value;refresh();})
       .catch(()=>{serverStatus={fireworks:false,tavily:false};refresh();});
@@ -45,7 +79,7 @@ function hydrate(team) {
   entry.research=team.research??null;entry.recommendation=team.recommendation??null;
   return entry;
 }
-export function mountAnalysis(team) { visibleTeam = team; const entry=hydrate(team);entry.history.invalidate();delete entry.previewFormation;refresh(); }
+export function mountAnalysis(team) { visibleTeam = team; const entry=hydrate(team);entry.history.invalidate();delete entry.previewFormation;refresh();serverJobs?.resume(team.id); }
 export function changeAnalysisFormation(formation){const entry=analyses.get(visibleTeam?.id);if(!entry)return;entry.previewFormation=formation??entry.history.current?.record?.recommendation.lineup.formation;refresh();}
 function manualEntry(team,entry,method=entry.model){
   entry.manualDrafts??={};const selection=entry.history.current;
@@ -91,7 +125,7 @@ function refresh() {
   }
   const selection=entry.history.current,selected=selectedLineupTeam(team,selection.record),rec=selected.recommendation;
   const canFollowUp=rec&&rec.id===team.recommendation?.id;
-  const busy = pending?.teamId === team.id;
+  const activeJob=entry.serverJob?.status==='running',busy=pending?.teamId===team.id||activeJob,locked=Boolean(pending)||activeJob||Boolean(entry.serverResultPending),workKind=activeJob?'analysis':pending?.kind;
   const reason = staleReason(entry.research,team,entry.matchday);
   const engine=entry.model===ENGINE_ID,manual=isManualMethod(entry.model),item=manual?manualEntry(team,entry):null;
   host.innerHTML = `<section class="ai-card analysis-workspace" aria-labelledby="analysis-title">
@@ -99,13 +133,14 @@ function refresh() {
     <div class="analysis-steps">
       <section class="research-step analysis-surface" aria-labelledby="research-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">01</span><div><p class="eyebrow">LE FONTI</p><h3 id="research-title">Aggiorna i dati</h3></div></div><span class="analysis-chip chip-free">Nessun costo AI</span></header><p class="analysis-description">Statistiche e probabili formazioni, direttamente dalle fonti.</p>
         ${entry.research?`<div class="research-source-grid">${understatView(entry.research.understat)}${dataView(entry.research)}</div>`:'<div class="research-empty"><span aria-hidden="true">↻</span><p>La tua raccolta parte da qui.</p><small>Fantacalcio per voti e impiego, Understat per xG e xA.</small></div>'}
-        <p id="research-warning" class="analysis-alert" ${reason?'':'hidden'}>${escape(reason)}</p><footer class="analysis-card-footer"><span class="analysis-meta">${entry.research?'Raccolta salvata · condivisa tra i dispositivi':'Ogni aggiornamento sostituisce il precedente'}</span><button id="ai-research" class="button button-outline" ${pending||!understatURL||!team.players.length?'disabled':''}>${busy&&pending.kind==='research'?'Aggiornamento in corso…':'Aggiorna dati'} <span aria-hidden="true">↻</span></button></footer></section>
-      <section class="research-step analysis-surface analysis-model-card" aria-labelledby="model-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">02</span><div><p class="eyebrow">LA SCELTA</p><h3 id="model-title">Scegli la formazione</h3></div></div></header><p class="analysis-description">Scegli il metodo per valutare la rosa con le regole della tua lega.</p><div class="model-picker"><label for="ai-model">Metodo</label><select id="ai-model" ${pending?'disabled':''}>${[...AI_MODELS,{id:ENGINE_ID,label:'Statistical engine'},...MANUAL_METHODS].map(model=>`<option value="${model.id}" ${model.id===entry.model?'selected':''}>${model.label}</option>`).join('')}</select><p class="analysis-meta">Usa la raccolta salvata, senza nuove ricerche.</p></div><a class="analysis-text-link" href="#regole/${encodeURIComponent(team.id)}">Regole della lega <span aria-hidden="true">↗</span></a>${manual?`<p class="analysis-meta">${entry.model==='chatgpt'?'Copia il prompt e inserisci sul campo la formazione ottenuta nella tua chat.':'Componi la formazione sul campo qui sotto e salvala.'} Nessuna chiamata AI dall’app.</p>${entry.model==='chatgpt'?`<button id="manual-copy-prompt" type="button" class="button button-outline" ${pending||reason||selection.state!=='ready'?'disabled':''}>Copia prompt per ChatGPT</button>${item.prompt?`<details id="manual-prompt-details" class="analysis-disclosure" ${item.promptFallback?'open':''}><summary>Prompt completo da copiare</summary><p class="field-hint">Istruzioni e dati identici a quelli usati da DeepSeek e Kimi.</p><label for="manual-prompt-text">Prompt</label><textarea id="manual-prompt-text" readonly rows="12">${escape(item.prompt.text)}</textarea></details>`:''}`:''}`:`<details class="analysis-disclosure pricing-disclosure"><summary>Costi e dettagli <span aria-hidden="true">+</span></summary><div class="analysis-disclosure-body"><p>${engine?'Statistical engine esegue simulazioni locali, senza chiave né costo AI. Supporta il profilo Classic predefinito (0–5 sostituzioni); mostra ipotesi e dati mancanti.':'Kimi ha tariffe più alte.'} ${engine?'Calcolo limitato a 1.000 scenari e 136 candidati, con possibilità di annullare. Gli orari devono essere verificati e futuri per tutti i giocatori disponibili.':'Il costo in USD appare dopo la risposta e usa i token riportati e le tariffe standard del 08/10/2026, senza imposte o accordi personalizzati.'}</p><p>Ogni proposta è archiviata per metodo e giornata. Rigenerare lo stesso metodo nella stessa giornata sostituisce solo quella proposta.</p><a class="analysis-text-link" href="${engine?'https://understat.com':modelInfo(entry.model).url}" target="_blank" rel="noopener noreferrer">${engine?'Fonte statistica ↗':'Tariffe Fireworks ↗'}</a></div></details><button id="ai-analyze" class="button button-primary" ${pending||(!engine&&!fireworksReady())||reason?'disabled':''}>${busy&&pending.kind==='analysis'?'Analisi in corso…':'Suggerisci formazione'} <span aria-hidden="true">→</span></button>`}</section>
+        <p id="research-warning" class="analysis-alert" ${reason?'':'hidden'}>${escape(reason)}</p><footer class="analysis-card-footer"><span class="analysis-meta">${entry.research?'Raccolta salvata · condivisa tra i dispositivi':'Ogni aggiornamento sostituisce il precedente'}</span><button id="ai-research" class="button button-outline" ${locked||!understatURL||!team.players.length?'disabled':''}>${busy&&workKind==='research'?'Aggiornamento in corso…':'Aggiorna dati'} <span aria-hidden="true">↻</span></button></footer></section>
+      <section class="research-step analysis-surface analysis-model-card" aria-labelledby="model-title"><header class="analysis-section-head"><div class="step-title"><span class="step-number" aria-hidden="true">02</span><div><p class="eyebrow">LA SCELTA</p><h3 id="model-title">Scegli la formazione</h3></div></div></header><p class="analysis-description">Scegli il metodo per valutare la rosa con le regole della tua lega.</p><div class="model-picker"><label for="ai-model">Metodo</label><select id="ai-model" ${locked?'disabled':''}>${[...AI_MODELS,{id:ENGINE_ID,label:'Statistical engine'},...MANUAL_METHODS].map(model=>`<option value="${model.id}" ${model.id===entry.model?'selected':''}>${model.label}</option>`).join('')}</select><p class="analysis-meta">Usa la raccolta salvata, senza nuove ricerche.</p></div><a class="analysis-text-link" href="#regole/${encodeURIComponent(team.id)}">Regole della lega <span aria-hidden="true">↗</span></a>${manual?`<p class="analysis-meta">${entry.model==='chatgpt'?'Copia il prompt e inserisci sul campo la formazione ottenuta nella tua chat.':'Componi la formazione sul campo qui sotto e salvala.'} Nessuna chiamata AI dall’app.</p>${entry.model==='chatgpt'?`<button id="manual-copy-prompt" type="button" class="button button-outline" ${locked||reason||selection.state!=='ready'?'disabled':''}>Copia prompt per ChatGPT</button>${item.prompt?`<details id="manual-prompt-details" class="analysis-disclosure" ${item.promptFallback?'open':''}><summary>Prompt completo da copiare</summary><p class="field-hint">Istruzioni e dati identici a quelli usati da DeepSeek e Kimi.</p><label for="manual-prompt-text">Prompt</label><textarea id="manual-prompt-text" readonly rows="12">${escape(item.prompt.text)}</textarea></details>`:''}`:''}`:`<details class="analysis-disclosure pricing-disclosure"><summary>Costi e dettagli <span aria-hidden="true">+</span></summary><div class="analysis-disclosure-body"><p>${engine?'Statistical engine esegue simulazioni locali, senza chiave né costo AI. Supporta il profilo Classic predefinito (0–5 sostituzioni); mostra ipotesi e dati mancanti.':'Kimi ha tariffe più alte.'} ${engine?'Calcolo limitato a 1.000 scenari e 136 candidati, con possibilità di annullare. Gli orari devono essere verificati e futuri per tutti i giocatori disponibili.':'Il costo in USD appare dopo la risposta e usa i token riportati e le tariffe standard del 08/10/2026, senza imposte o accordi personalizzati.'}</p><p>Ogni proposta è archiviata per metodo e giornata. Rigenerare lo stesso metodo nella stessa giornata sostituisce solo quella proposta.</p><a class="analysis-text-link" href="${engine?'https://understat.com':modelInfo(entry.model).url}" target="_blank" rel="noopener noreferrer">${engine?'Fonte statistica ↗':'Tariffe Fireworks ↗'}</a></div></details><button id="ai-analyze" class="button button-primary" ${locked||(!engine&&!fireworksReady())||reason?'disabled':''}>${busy&&workKind==='analysis'?'Analisi in corso…':'Suggerisci formazione'} <span aria-hidden="true">→</span></button>`}</section>
     </div>
-    <div class="analysis-feedback ${busy?'is-pending':''}"><p id="ai-progress" role="status">${escape(busy?entry.progress||'Richiesta in corso…':pending?'È in corso una richiesta per un’altra squadra.':!manual&&!engine&&!fireworksReady()?(HOSTED_API?'Servizio AI non disponibile. Puoi comunque aggiornare i dati.':'Servizi AI non configurati.'):!understatURL?'Servizio Understat non configurato.':entry.notice||'')}</p>${busy&&pending.phase!=='saving'?'<button id="ai-cancel" class="button button-outline">Annulla</button>':''}</div>
+    <div class="analysis-feedback ${busy?'is-pending':''}"><p id="ai-progress" role="status">${escape(busy?entry.progress||'Richiesta in corso…':pending?'È in corso una richiesta per un’altra squadra.':!manual&&!engine&&!fireworksReady()?(HOSTED_API?'Servizio AI non disponibile. Puoi comunque aggiornare i dati.':'Servizi AI non configurati.'):!understatURL?'Servizio Understat non configurato.':entry.notice||'')}</p>${entry.serverJob?jobProgress(entry.serverJob):''}${entry.serverResultPending?'<button id="ai-job-recover" class="button button-outline">Ricarica risultato</button>':''}${busy&&pending?.phase!=='saving'&&!pending?.serverJob&&!activeJob?'<button id="ai-cancel" class="button button-outline">Annulla</button>':''}</div>
     ${entry.error?`<p class="import-error analysis-alert" role="alert">${escape(entry.error)}</p>`:''}
-    ${rec&&!manual?recommendationView(rec,recommendationIsStale(rec,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(selected,{unavailableReason:canFollowUp?followUpUnavailableReason(team,entry.matchday):'Questa proposta è archiviata. Genera una nuova proposta con questo metodo prima di continuare la conversazione.',matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(pending),asking:busy&&pending.kind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
+    ${rec&&!manual?recommendationView(rec,recommendationIsStale(rec,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(selected,{unavailableReason:canFollowUp?followUpUnavailableReason(team,entry.matchday):'Questa proposta è archiviata. Genera una nuova proposta con questo metodo prima di continuare la conversazione.',matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(locked),asking:busy&&workKind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
+  host.querySelector('#ai-job-recover')?.addEventListener('click',()=>applyServerJob(entry.serverResultPending));
   host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-research').onclick = () => run('research',team,entry);
   host.querySelector('#ai-model').onchange=event=>{entry.model=event.target.value;entry.history.invalidate();delete entry.previewFormation;entry.followUpDraft='';entry.followUpError='';entry.error='';entry.notice='';refresh();};
@@ -117,10 +152,16 @@ function refresh() {
     host.querySelector('#follow-up-form').onsubmit=event=>{event.preventDefault();if(!question.disabled&&question.value.trim())run('followUp',team,entry);};
   }
   host.querySelectorAll('[data-follow-up-question]').forEach(button=>{button.onclick=()=>{if(!question||question.disabled)return;question.value=button.dataset.followUpQuestion;question.dispatchEvent(new Event('input',{bubbles:true}));question.focus();};});
-  onContextChange?.(team,entry.matchday,manual?{method:entry.model,draft:item.draft,busy:Boolean(pending),loading:item.state==='loading'||item.state==='new',loadError:item.state==='error',reason:manualContextReason(team,entry.matchday)||promptChangedReason(team,entry,item),notice:item.notice??'',error:item.error??'',onChange:draft=>{item.draft=draft;item.notice='';item.error='';},onSave:()=>run('manual',team,entry),onRetry:()=>{entry.history.invalidate();refresh();}}:null,{selection,team:selected,previewFormation:entry.previewFormation,onRetry:()=>{entry.history.invalidate();refresh();}});
+  onContextChange?.(team,entry.matchday,manual?{method:entry.model,draft:item.draft,busy:Boolean(locked),loading:item.state==='loading'||item.state==='new',loadError:item.state==='error',reason:manualContextReason(team,entry.matchday)||promptChangedReason(team,entry,item),notice:item.notice??'',error:item.error??'',onChange:draft=>{item.draft=draft;item.notice='';item.error='';},onSave:()=>run('manual',team,entry),onRetry:()=>{entry.history.invalidate();refresh();}}:null,{selection,team:selected,previewFormation:entry.previewFormation,onRetry:()=>{entry.history.invalidate();refresh();}});
 }
 async function run(kind,team,entry) {
   if (pending) return;
+  if(kind==='analysis'&&HOSTED_API&&AI_MODELS.some(m=>m.id===entry.model)){
+    pending={kind,teamId:team.id,serverJob:true};entry.error='';entry.notice='';entry.progress='Avvio dell’analisi… Attendi la conferma prima di chiudere l’app.';refresh();
+    try{await serverJobs.start({teamId:team.id,model:entry.model,matchday:entry.matchday,researchId:entry.research?.id,teamFingerprint:fingerprint(team)});}
+    catch{pending=null;entry.error='Avvio non confermato. Riapri la formazione per verificare le richieste già inviate.';refresh();}
+    return;
+  }
   const snapshot = structuredClone(team), researchSnapshot = structuredClone(entry.research), controller = new AbortController(), matchday = entry.matchday, question=(entry.followUpDraft??'').trim(), model=entry.model??DEFAULT_MODEL, label=isManualMethod(model)&&kind!=='followUp'?recommendationLabel({method:model}):model===ENGINE_ID&&kind!=='followUp'?'Statistical engine':modelInfo(kind==='followUp'?(snapshot.recommendation?.model??DEFAULT_MODEL):model).label;
   pending = { kind,teamId:team.id,controller }; entry.error = ''; entry.followUpError=''; entry.notice = ''; entry.progress = kind === 'analysis' ? model===ENGINE_ID?'Statistical engine sta confrontando scenari e formazioni…':`${label} sta preparando la proposta. La richiesta può durare fino a 5 minuti.` : kind==='followUp'?`${label} sta leggendo la proposta e la tua domanda. La risposta può richiedere fino a 5 minuti.`:'';
   refresh();

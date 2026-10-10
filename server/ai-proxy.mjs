@@ -73,10 +73,15 @@ export async function handleAI(request, { env = process.env, fetchImpl = fetch, 
   } catch (error) { return json({error:'invalid_request'}, error.message === 'size' ? 413 : 400); }
   const key = env[target.keyName]?.trim();
   if (!validKey(key)) return json({error:'not_configured'},503);
+  return callProvider(target,{env,fetchImpl,timeoutMs,logImpl,signal:request.signal});
+}
+export async function callProvider(target,{env=process.env,fetchImpl=fetch,timeoutMs=290000,logImpl=console.info,signal}={}) {
+  const key=env[target.keyName]?.trim();
+  if(!validKey(key))return json({error:'not_configured'},503);
   try {
     const startedAt = Date.now();
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
-    const response = await fetchImpl(target.url, {method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(target.body),signal,redirect:'error'});
+    const providerSignal = AbortSignal.any([...(signal?[signal]:[]), AbortSignal.timeout(timeoutMs)]);
+    const response = await fetchImpl(target.url, {method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(target.body),signal:providerSignal,redirect:'error'});
     if (!response.ok) return json({error:'provider_error'}, [401,402,403,429,432,433].includes(response.status) ? response.status : 502);
     let content = await limitedText(response.body, 4000000);
     // Never forward credentials, including accidental provider echoes.

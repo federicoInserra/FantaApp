@@ -7,6 +7,7 @@ import {handleFantacalcio} from '../server/fantacalcio-source.mjs';
 import {handleTeams} from '../server/teams-api.mjs';
 import {handleLineups} from '../server/lineups-api.mjs';
 import {handleAI} from '../server/ai-proxy.mjs';
+import {handleAIJobs} from '../server/ai-jobs.mjs';
 import {handleVercelUnderstat} from '../server/vercel-understat.mjs';
 let previewStore;
 if(process.argv.includes('--demo-db')) {
@@ -22,9 +23,9 @@ const port=Number(process.env.PORT || 8007),origin=`http://localhost:${port}`,ro
 const types={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.ttf':'font/ttf','.webmanifest':'application/manifest+json'};
 createServer(async(req,res)=>{
   const url=new URL(req.url,origin);
-  if(['/api/ai','/api/ai-status','/api/teams','/api/lineups'].includes(url.pathname)) {
+  if(['/api/ai','/api/ai-status','/api/teams','/api/lineups','/api/ai-jobs'].includes(url.pathname)) {
     const request=new Request(url,{method:req.method,headers:req.headers,...(['POST','PUT'].includes(req.method)?{body:req,duplex:'half'}:{})});
-    const result=await (url.pathname==='/api/teams'?handleTeams(request,{store:previewStore}):url.pathname==='/api/lineups'?handleLineups(request,{store:previewStore}):handleAI(request));
+    const result=await (url.pathname==='/api/ai-jobs'?handleAIJobs(request,{store:previewStore,waitUntil:task=>task.catch(()=>{})}):url.pathname==='/api/teams'?handleTeams(request,{store:previewStore}):url.pathname==='/api/lineups'?handleLineups(request,{store:previewStore}):handleAI(request));
     res.writeHead(result.status,Object.fromEntries(result.headers));res.end(Buffer.from(await result.arrayBuffer()));return;
   }
   if(url.pathname==='/api/fantacalcio'||url.pathname==='/api/calendar'){

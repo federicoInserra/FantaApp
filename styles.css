@@ -116,3 +116,5 @@ button.pitch-player{border:0;background:transparent;padding:5px 2px;border-radiu
 #manual-player-choices { max-height:45dvh; overflow:auto; margin-bottom:16px; }
 #manual-prompt-text { font-family:var(--mono); font-size:12px; }
 @media(max-width:600px){.manual-bench ol{grid-template-columns:1fr}.manual-formation .pitch-player strong{font-size:9px}}
+.ai-job-progress{display:grid;grid-template-columns:20px 1fr;gap:12px;align-items:center;width:100%;max-width:600px}.ai-job-progress progress,.ai-job-progress p{grid-column:1/-1;width:100%;margin:0}.ai-job-progress progress{height:6px;accent-color:#ee6959}.ai-job-progress p{font-size:12px;line-height:1.6}.ai-job-progress strong{font-variant-numeric:tabular-nums}.ai-job-spinner{width:18px;height:18px;border:2px solid #d1d1c8;border-top-color:#ee6959;border-radius:50%;animation:ai-job-spin 1s linear infinite}@keyframes ai-job-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.ai-job-spinner{animation:none}}
+.analysis-feedback:has(.ai-job-progress){flex-direction:column;align-items:flex-start}.analysis-feedback:has(.ai-job-progress) #ai-progress:before{display:none}

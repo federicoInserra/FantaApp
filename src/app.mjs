@@ -225,6 +225,12 @@ setupAnalysis({onContextChange:(team,matchday,manual,history)=>{
       host.querySelector('#method-load-retry')?.addEventListener('click',history.onRetry);
     }
   }
+},reloadServerResult:async()=>{
+  if(cloud.busy)throw new Error('Database occupato.');
+  const activeId=state.activeTeamId;
+  if(!await cloud.load())throw new Error('Database non raggiungibile.');
+  state=cloud.state;if(state.teams.some(t=>t.id===activeId))state.activeTeamId=activeId;
+  render();return structuredClone(activeTeam());
 },saveResult:async(teamId,kind,result,expectedFingerprint)=>{
   const next=withAnalysisResult(state,teamId,kind,result,expectedFingerprint);
   if(cloud.busy||!cloud.ready)throw new Error('Database occupato o non disponibile. Ricarica le squadre.');
