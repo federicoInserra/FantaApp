@@ -79,6 +79,10 @@ export function createTeamStore(sql) {
       if(season!==undefined)return sql`SELECT method,recommendation_id,record,actual_result,updated_at FROM fantaapp_lineup_history WHERE team_id=${teamId} AND season=${season} AND matchday=${matchday} ORDER BY method`;
       return sql`SELECT season,matchday,method,recommendation_id,record->'recommendation'->>'createdAt' AS created_at,actual_result->>'status' AS status,actual_result->'total' AS total FROM fantaapp_lineup_history WHERE team_id=${teamId} ORDER BY season DESC,matchday DESC,method`;
     },
+    async rankingHistory(teamId) {
+      await init();
+      return sql`SELECT season,matchday,method,record->'rules' AS rules,actual_result FROM fantaapp_lineup_history WHERE team_id=${teamId} ORDER BY season,matchday,method`;
+    },
     async score(teamId,season,matchday,method,recommendationId,result) {
       await init();
       const rows=await sql`UPDATE fantaapp_lineup_history SET actual_result=${JSON.stringify(result)}::jsonb WHERE team_id=${teamId} AND season=${season} AND matchday=${matchday} AND method=${method} AND recommendation_id=${recommendationId}

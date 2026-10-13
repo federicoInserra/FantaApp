@@ -54,12 +54,12 @@ test('vote collector bounds downloads, rejects redirects and upstream errors wit
   await assert.rejects(collectMatchdayVotes(2026,8,{useCache:false,fetchImpl:async()=>new Response('not available',{status:404})}));
   await assert.rejects(collectMatchdayVotes(2026,8,{useCache:false,fetchImpl:async()=>new Response('x'.repeat(4000001))}));
 });
-test('comparison handles ties and excludes late, incomplete or differently configured suggestions; escapes stored text',()=>{
+test('comparison handles ties and includes late suggestions and excludes incomplete or differently configured suggestions; escapes stored text',()=>{
   const f=historyFixture(),result=actualLineupScore(f.record,f.votes);
   const a={method:'deepseek',record:f.record,actual_result:result},b={method:'kimi',record:structuredClone(f.record),actual_result:{...result,total:70}};
   assert.deepEqual(comparisonWinner([a,b]),['kimi']);b.actual_result.total=result.total;assert.deepEqual(comparisonWinner([a,b]),['deepseek','kimi']);
   b.actual_result.checkedAt='2026-10-04T12:00:00Z';assert.deepEqual(comparisonWinner([a,b]),[]);b.actual_result.checkedAt=result.checkedAt;
-  b.actual_result.late=true;assert.deepEqual(comparisonWinner([a,b]),[]);b.actual_result.late=false;b.record.rules[4]='Massimo 1 sostituzioni per giornata.';assert.deepEqual(comparisonWinner([a,b]),[]);
+  b.actual_result.late=true;assert.deepEqual(comparisonWinner([a,b]),['deepseek','kimi']);b.actual_result.late=false;b.record.rules[4]='Massimo 1 sostituzioni per giornata.';assert.deepEqual(comparisonWinner([a,b]),[]);
   b.record.rules=f.record.rules;b.actual_result.status='pending';assert.deepEqual(comparisonWinner([a,b]),[]);
   f.record.recommendation.text='<script>alert(1)</script>';const output=renderComparisonCards([a]);assert.ok(output.includes('&lt;script&gt;'));assert.ok(!output.includes('<script>'));assert.ok(output.includes('Nessuna proposta salvata'));
   f.record.recommendation.createdAt=f.record.roundStartsAt;assert.equal(actualLineupScore(f.record,f.votes).late,true);

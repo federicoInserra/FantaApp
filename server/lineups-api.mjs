@@ -1,5 +1,6 @@
 import {databaseStore} from './team-store.mjs';
 import {collectMatchdayVotes} from './matchday-votes.mjs';
+import {comparisonRankings} from '../src/comparison-rankings.mjs';
 import {actualLineupScore} from './actual-lineup-score.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 const validId=id=>typeof id==='string'&&id.length>0&&id.length<=150;
@@ -28,14 +29,15 @@ export async function handleLineups(request,{store,env=process.env,collect=colle
     const database=store??databaseStore(env);if(!database)return json({error:'Database non configurato.'},503);
     const workspace=await database.read();
     if(!workspace.state.teams.some(t=>t.id===teamId))return json({error:'Squadra non trovata.'},404);
-    if(request.method==='GET')return json({items:await database.history(teamId,season,matchday)});
+    const rankings=async()=>comparisonRankings(await database.rankingHistory(teamId));
+    if(request.method==='GET')return json({items:await database.history(teamId,season,matchday),rankings:await rankings()});
     const items=await database.history(teamId,season,matchday);
-    if(!items.length)return json({items:[]});
+    if(!items.length)return json({items:[],rankings:await rankings()});
     // Before kickoff there are no actual results to collect.
-    if(items.every(item=>item.record.roundStartsAt&&Date.parse(item.record.roundStartsAt)>now.getTime()))return json({items,notice:'La giornata non è ancora iniziata.'});
+    if(items.every(item=>item.record.roundStartsAt&&Date.parse(item.record.roundStartsAt)>now.getTime()))return json({items,rankings:await rankings(),notice:'La giornata non è ancora iniziata.'});
     let votes;
     try{votes=await collect(season,matchday,{now,signal:request.signal});}catch{return json({error:'Voti della giornata non disponibili o formato della fonte cambiato. I risultati salvati sono conservati.'},502);}
     for(const item of items)await database.score(teamId,season,matchday,item.method,item.recommendation_id,actualLineupScore(item.record,votes));
-    return json({items:await database.history(teamId,season,matchday)});
+    return json({items:await database.history(teamId,season,matchday),rankings:await rankings()});
   }catch{return json({error:'Database o calcolo dei risultati non disponibile.'},502);}
 }

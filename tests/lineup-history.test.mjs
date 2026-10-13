@@ -76,11 +76,35 @@ test('history API validates access and automatically saves actual results withou
     assert.equal((await handleLineups(new Request(`https://app.test/api/lineups?teamId=${f.team.id}&season=2026`),options)).status,400);
     assert.equal((await handleLineups(req({...body,teamId:'missing'}),options)).status,404);
     const before=await handleLineups(req(body),{...options,now:new Date('2026-10-01T12:00:00Z')});assert.equal((await before.json()).notice,'La giornata non è ancora iniziata.');assert.equal(calls,0);
-    const response=await handleLineups(req({...body,total:999}),options);assert.equal(response.status,200);const item=(await response.json()).items[0];assert.equal(item.actual_result.total,68);assert.equal(calls,1);
+    const response=await handleLineups(req({...body,total:999}),options);assert.equal(response.status,200);const responseData=await response.json();const item=responseData.items[0];assert.equal(responseData.rankings.find(r=>r.method==='deepseek').total,68);assert.equal(responseData.rankings.find(r=>r.method==='deepseek').scored,1);assert.equal(item.actual_result.total,68);assert.equal(calls,1);
     const failure=await handleLineups(req(body),{...options,collect:()=>{throw Error('secret');}});assert.equal(failure.status,502);assert.equal((await store.history(f.team.id,2026,8))[0].actual_result.total,68);
   }finally{await pg.close();}
 });
 test('research provider identities survive sanitation and malformed identities are rejected',()=>{
   const f=historyFixture();assert.equal(storedResearch(f.team.research).players[0].fantacalcioId,'1');
   f.team.research.players[0].fantacalcioId='https://evil.test';assert.throws(()=>storedResearch(f.team.research));
+});
+
+test('ranking API uses existing saved scores across rounds, isolates teams and updates replacements without double counting',async()=>{
+  const {pg,store,save}=await database(),f=historyFixture();
+  try{
+    await save(f.state);
+    const body={teamId:f.team.id,season:2026,matchday:8};
+    const collect=async()=>f.votes,options={store,collect,now:new Date('2026-10-03T12:00:00Z')};
+    await handleLineups(req(body),options);
+    const next=historyFixture({matchday:9});await save(next.state);
+    await store.score(f.team.id,2026,9,'deepseek','deepseek',{status:'complete',total:75,checkedAt:'2026-10-05T12:00:00Z'});
+    const read=async()=> (await (await handleLineups(new Request(`https://app.test/api/lineups?teamId=${f.team.id}`),options)).json()).rankings.find(r=>r.method==='deepseek');
+    assert.equal((await read()).total,143);assert.equal((await read()).scored,2);
+    await handleLineups(req(body),options);assert.equal((await read()).total,143);
+    await store.score(f.team.id,2026,9,'deepseek','deepseek',{status:'complete',total:76,checkedAt:'2026-10-06T12:00:00Z'});
+    assert.equal((await read()).total,144);
+    const state=(await store.read()).state;state.teams[0].recommendation=next.rec('deepseek','replacement');await save(state);
+    assert.equal((await read()).total,68);assert.equal((await read()).scored,1);
+    const other=historyFixture();other.team.id='other-team';other.state.activeTeamId='other-team';
+    const both=(await store.read()).state;both.teams.push(other.team);await save(both);
+    await store.score('other-team',2026,8,'deepseek','deepseek',{status:'complete',total:999,checkedAt:'2026-10-06T12:00:00Z'});
+    assert.equal((await read()).total,68);
+    const compact=await store.rankingHistory(f.team.id);assert.equal(compact.length,2);assert.equal(compact[0].record,undefined);assert.ok(Array.isArray(compact[0].rules));
+  }finally{await pg.close();}
 });

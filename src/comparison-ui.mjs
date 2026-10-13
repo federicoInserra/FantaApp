@@ -1,15 +1,18 @@
 import {forecastTotals} from './forecast.mjs';
-import {MANUAL_METHODS} from './recommendation-methods.mjs';
-export const COMPARISON_METHODS=[{id:'deepseek',label:'DeepSeek'},{id:'kimi',label:'Kimi'},{id:'statistical-engine',label:'Statistical engine'},...MANUAL_METHODS];
+import {COMPARISON_METHODS,comparisonWinner} from './comparison-rankings.mjs';
+export {COMPARISON_METHODS,comparisonWinner} from './comparison-rankings.mjs';
 const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const points=n=>new Intl.NumberFormat('it-IT',{maximumFractionDigits:2}).format(n);
-export function comparisonWinner(items) {
-  if(items.length<2||items.some(i=>i.actual_result?.status!=='complete'||i.actual_result.late))return [];
-  const rules=JSON.stringify(items[0].record.rules.slice(3,14));
-  if(items.some(i=>JSON.stringify(i.record.rules.slice(3,14))!==rules))return [];
-  if(items.some(i=>i.actual_result.checkedAt!==items[0].actual_result.checkedAt||i.actual_result.provider!==items[0].actual_result.provider||i.actual_result.sourceUrl!==items[0].actual_result.sourceUrl))return [];
-  const best=Math.max(...items.map(i=>i.actual_result.total));
-  return items.filter(i=>Math.abs(i.actual_result.total-best)<.001).map(i=>i.method);
+export function renderRankings(rows) {
+  if(!rows)return '';
+  const table=(key,title,valueLabel,countKey,countLabel)=>{
+    const sorted=[...rows].sort((a,b)=>b[key]-a[key]||a.label.localeCompare(b.label));
+    return `<section class="content-card ranking-card"><h3>${title}</h3><table><thead><tr><th scope="col">#</th><th scope="col">Metodo</th><th scope="col">${valueLabel}</th><th scope="col">${countLabel}</th></tr></thead><tbody>${sorted.map(row=>{
+      const rank=1+sorted.filter(other=>other[key]>row[key]).length;
+      return `<tr><td>${rank}</td><th scope="row">${escape(row.label)}</th><td><strong>${points(row[key])}</strong></td><td>${row[countKey]}</td></tr>`;
+    }).join('')}</tbody></table></section>`;
+  };
+  return `<section aria-label="Classifiche della squadra"><h2>Classifiche della squadra</h2><p class="analysis-meta">Tutte le stagioni e le giornate archiviate di questa squadra. I fantapunti sommano i risultati completi; le giornate conteggiate sono indicate per ogni metodo. Una vittoria vale 1 punto, anche a pari merito. Servono almeno due metodi, tutti i risultati salvati completi e regole coerenti per assegnare la vittoria. Le proposte dopo il calcio d’inizio sono incluse.</p><div class="ranking-grid">${table('total','Fantapunti totali','Fantapunti','scored','Giornate')}${table('wins','Vittorie di giornata','Vittorie','compared','Confronti')}</div></section>`;
 }
 export function renderComparisonCards(items) {
   const winners=comparisonWinner(items);
@@ -17,12 +20,10 @@ export function renderComparisonCards(items) {
     const item=items.find(i=>i.method===method.id);
     if(!item)return `<section class="content-card comparison-card"><h3>${method.label}</h3><p>Nessuna proposta salvata per questa giornata.</p></section>`;
     const record=item.record,rec=record.recommendation,result=item.actual_result,players=new Map(record.players.map(p=>[p.id,p]));
-    const late=!record.roundStartsAt||Date.parse(rec.createdAt)>=Date.parse(record.roundStartsAt);
     const playerLabel=id=>{const p=players.get(id);return `${escape(p?.name??id)} <small>${escape(p?.club??'')} · ${escape(p?.role??'')}</small>`;};
     const expected=rec.forecast?forecastTotals(rec.forecast).expected:null;
     return `<section class="content-card comparison-card"><div class="comparison-title"><h3>${method.label}</h3>${winners.includes(method.id)?`<span class="comparison-winner">${winners.length>1?'Pari merito':'Migliore'}</span>`:''}</div>
       <p class="analysis-meta">${escape(rec.lineup.formation)} · salvata ${escape(new Date(rec.createdAt).toLocaleString('it-IT'))}</p>
-      ${late?'<p class="analysis-alert">Fuori termine o orario non verificato: esclusa dalla valutazione del metodo.</p>':''}
       <div class="comparison-score"><strong>${result?.status==='complete'?points(result.total):'—'}</strong><span>Fantapunti reali</span></div>
       ${expected!==null?`<p class="analysis-meta">Previsione: ${points(expected)} punti</p>`:''}
       <p>${escape(result?.status==='complete'?`Modificatore difesa: +${points(result.modifier)} · ${result.substitutions.length} sostituzioni · ${result.goals} gol`:result?.reason??'Voti non ancora raccolti.')}</p>
@@ -36,7 +37,7 @@ let mountedController;
 export async function mountComparison(team) {
   mountedController?.abort();const controller=new AbortController();mountedController=controller;
   const host=document.querySelector('#lineup-comparison');if(!host)return;
-  let rounds=[],selected=null,items=[],busy=false,error='',notice='';
+  let rounds=[],selected=null,items=[],rankings=null,busy=false,error='',notice='';
   const request=async(url,options={})=>{
     const response=await fetch(url,{credentials:'same-origin',cache:'no-store',...options,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])});
     const data=await response.json();if(!response.ok)throw Error(data.error??'Confronto non disponibile.');return data;
@@ -46,9 +47,9 @@ export async function mountComparison(team) {
     if(!rounds.length){host.innerHTML=`<section class="content-card"><p role="status">${escape(error|| (busy?'Caricamento proposte salvate…':'Nessuna formazione archiviata. Genera una proposta nella pagina Formazione: sarà salvata automaticamente per metodo e giornata.'))}</p>${error?'<button class="button button-outline" data-comparison-retry>Riprova</button>':''}</section>`;host.querySelector('[data-comparison-retry]')?.addEventListener('click',load);return;}
     const seasons=[...new Set(rounds.map(r=>r.season))],days=rounds.filter(r=>r.season===selected.season);
     const allComplete=items.length>=2&&items.every(i=>i.actual_result?.status==='complete'),winners=comparisonWinner(items);
-    host.innerHTML=`<div class="comparison-toolbar"><label>Stagione<select id="comparison-season" ${busy?'disabled':''}>${seasons.map(s=>`<option value="${s}" ${s===selected.season?'selected':''}>${s}/${s+1}</option>`).join('')}</select></label><label>Giornata<select id="comparison-matchday" ${busy?'disabled':''}>${days.map(r=>`<option value="${r.matchday}" ${r.matchday===selected.matchday?'selected':''}>${r.matchday}</option>`).join('')}</select></label><button id="comparison-refresh" class="button button-outline" ${busy?'disabled':''}>${busy?'Aggiornamento…':'Aggiorna risultati'}</button></div>
+    host.innerHTML=`${renderRankings(rankings)}<div class="comparison-toolbar"><label>Stagione<select id="comparison-season" ${busy?'disabled':''}>${seasons.map(s=>`<option value="${s}" ${s===selected.season?'selected':''}>${s}/${s+1}</option>`).join('')}</select></label><label>Giornata<select id="comparison-matchday" ${busy?'disabled':''}>${days.map(r=>`<option value="${r.matchday}" ${r.matchday===selected.matchday?'selected':''}>${r.matchday}</option>`).join('')}</select></label><button id="comparison-refresh" class="button button-outline" ${busy?'disabled':''}>${busy?'Aggiornamento…':'Aggiorna risultati'}</button></div>
       <p class="analysis-meta">${items.length}/${COMPARISON_METHODS.length} metodi salvati. Voti: Redazione Fantacalcio. Bonus/malus classici, imbattibilità +1 e modificatore secondo le regole salvate. Sostituzioni stesso ruolo, ordine P/D/C/A.</p>
-      <p role="status">${escape(error||notice||(busy?'Raccolta dei voti e calcolo dei punteggi…':allComplete&&!winners.length?'Confronto non assegnato: controlla gli orari di generazione e le regole salvate, oppure aggiorna tutti i risultati.':'Il migliore viene indicato quando tutti i metodi salvati hanno risultati completi, le stesse regole e proposte generate prima della giornata.'))}</p>
+      <p role="status">${escape(error||notice||(busy?'Raccolta dei voti e calcolo dei punteggi…':allComplete&&!winners.length?'Confronto non assegnato: controlla le regole salvate, oppure aggiorna tutti i risultati.':'Il migliore viene indicato quando tutti i metodi salvati hanno risultati completi e le stesse regole.'))}</p>
       ${renderComparisonCards(items)}`;
     host.querySelector('#comparison-season').addEventListener('change',e=>{selected=rounds.find(r=>r.season===Number(e.target.value));items=[];loadRound();});
     host.querySelector('#comparison-matchday').addEventListener('change',e=>{selected={season:selected.season,matchday:Number(e.target.value)};items=[];loadRound();});
@@ -56,18 +57,18 @@ export async function mountComparison(team) {
   };
   const refresh=async()=>{
     busy=true;error='';notice='';render();
-    try{const data=await request('/api/lineups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teamId:team.id,...selected})});items=data.items;notice=data.notice??'';}
+    try{const data=await request('/api/lineups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teamId:team.id,...selected})});items=data.items;rankings=data.rankings??rankings;notice=data.notice??'';}
     catch(e){if(controller.signal.aborted)return;error=e.message;}
     finally{busy=false;render();}
   };
   const loadRound=async()=>{
     busy=true;error='';notice='';render();
-    try{const params=new URLSearchParams({teamId:team.id,season:selected.season,matchday:selected.matchday});const data=await request(`/api/lineups?${params}`);items=data.items;render();await refresh();}
+    try{const params=new URLSearchParams({teamId:team.id,season:selected.season,matchday:selected.matchday});const data=await request(`/api/lineups?${params}`);items=data.items;rankings=data.rankings??rankings;render();await refresh();}
     catch(e){if(controller.signal.aborted)return;error=e.message;busy=false;render();}
   };
   const load=async()=>{
     busy=true;error='';render();
-    try{const data=await request(`/api/lineups?${new URLSearchParams({teamId:team.id})}`);rounds=[...new Map(data.items.map(r=>[`${r.season}:${r.matchday}`,{season:r.season,matchday:r.matchday}])).values()];selected=rounds[0];if(selected)await loadRound();else{busy=false;render();}}
+    try{const data=await request(`/api/lineups?${new URLSearchParams({teamId:team.id})}`);rankings=data.rankings??rankings;rounds=[...new Map(data.items.map(r=>[`${r.season}:${r.matchday}`,{season:r.season,matchday:r.matchday}])).values()];selected=rounds[0];if(selected)await loadRound();else{busy=false;render();}}
     catch(e){if(controller.signal.aborted)return;error=e.message;busy=false;render();}
   };
   await load();
