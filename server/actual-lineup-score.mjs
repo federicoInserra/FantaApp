@@ -14,14 +14,15 @@ export function actualLineupScore(record,data) {
   for(const id of [...lineup.starters,...lineup.bench]) {
     const player=byId.get(id);if(!player)throw new Error('Rosa storica non valida.');
     let candidates;
-    if(player.fantacalcioId)candidates=data.players.filter(p=>p.id===player.fantacalcioId);
+    const providerId=data.provider==='FantaMaster'?null:player.fantacalcioId;
+    if(providerId)candidates=data.players.filter(p=>p.id===providerId);
     else {
       const tokens=canonical(player.name).split(' ');
       candidates=data.players.filter(p=>club(p.club)===club(player.club)&&(player.role==='P'?p.role==='P':p.role!=='P')&&tokens.every(t=>canonical(p.name).split(' ').some(u=>u===t||t.length<=2&&u.startsWith(t))));
     }
     const row=candidates.length===1?candidates[0]:null;
-    if(candidates.length>1||row?.status==='unknown'||(!row&&!player.fantacalcioId)||(row&&(player.role==='P')!==(row.role==='P'))){outcomes.set(id,{id,role:player.role,unknown:true});continue;}
-    outcomes.set(id,{id,role:player.role,rated:row?.status==='rated',vote:row?.vote??0,points:row?.status==='rated'?round(row.fantasyVote+(player.role==='P'&&row.conceded===0?rules.cleanSheet:0)):0,sourceId:row?.id??player.fantacalcioId});
+    if(candidates.length>1||row?.status==='unknown'||(!row&&!providerId)||(row&&(player.role==='P')!==(row.role==='P'))){outcomes.set(id,{id,role:player.role,unknown:true});continue;}
+    outcomes.set(id,{id,role:player.role,rated:row?.status==='rated',vote:row?.vote??0,points:row?.status==='rated'?round(row.fantasyVote+(player.role==='P'&&row.conceded===0?rules.cleanSheet:0)):0,sourceId:row?.id??providerId});
   }
   const counted=[],substitutions=[],used=new Set();let changes=0;
   // Apply the same Classic substitution convention to all methods, regardless of JSON ordering.
@@ -38,9 +39,9 @@ export function actualLineupScore(record,data) {
     counted.push({...outcome,starterId:id});
   }
   // Unknown unused reserves do not affect the total. Unknown starters or priority replacements do.
-  if(missing.length)return {...base,status:'pending',reason:`Identità o voto da verificare: ${[...new Set(missing)].join(', ')}. Aggiorna i dati prima delle prossime proposte per salvare le identità Fantacalcio.`,missing:[...new Set(missing)]};
+  if(missing.length)return {...base,status:'pending',reason:`Identità o voto da verificare: ${[...new Set(missing)].join(', ')}. Aggiorna i dati prima delle prossime proposte per verificare le identità dei giocatori.`,missing:[...new Set(missing)]};
   const rated=counted.filter(p=>p.rated);
-  if(new Set(rated.map(p=>p.sourceId)).size!==rated.length)return {...base,status:'pending',reason:'Due giocatori della rosa corrispondono alla stessa identità Fantacalcio. Verifica la rosa prima di confrontare i metodi.'};
+  if(new Set(rated.map(p=>p.sourceId)).size!==rated.length)return {...base,status:'pending',reason:'Due giocatori della rosa corrispondono alla stessa identità della fonte voti. Verifica la rosa prima di confrontare i metodi.'};
   const modifier=defensiveModifier(counted),total=round(counted.reduce((sum,p)=>sum+p.points,0)+modifier);
   const late=!record.roundStartsAt||Date.parse(record.recommendation.createdAt)>=Date.parse(record.roundStartsAt);
   return {...base,status:'complete',total,modifier,substitutions,players:counted,late,goals:total<66?0:1+Math.floor((total-66)/6)};

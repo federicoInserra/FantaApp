@@ -1,3 +1,4 @@
+import {voteProvider} from './vote-sources.mjs';
 import {forecastTotals} from './forecast.mjs';
 import {COMPARISON_METHODS,comparisonWinner} from './comparison-rankings.mjs';
 export {COMPARISON_METHODS,comparisonWinner} from './comparison-rankings.mjs';
@@ -48,7 +49,7 @@ export async function mountComparison(team) {
     const seasons=[...new Set(rounds.map(r=>r.season))],days=rounds.filter(r=>r.season===selected.season);
     const allComplete=items.length>=2&&items.every(i=>i.actual_result?.status==='complete'),winners=comparisonWinner(items);
     host.innerHTML=`${renderRankings(rankings)}<div class="comparison-toolbar"><label>Stagione<select id="comparison-season" ${busy?'disabled':''}>${seasons.map(s=>`<option value="${s}" ${s===selected.season?'selected':''}>${s}/${s+1}</option>`).join('')}</select></label><label>Giornata<select id="comparison-matchday" ${busy?'disabled':''}>${days.map(r=>`<option value="${r.matchday}" ${r.matchday===selected.matchday?'selected':''}>${r.matchday}</option>`).join('')}</select></label><button id="comparison-refresh" class="button button-outline" ${busy?'disabled':''}>${busy?'Aggiornamento…':'Aggiorna risultati'}</button></div>
-      <p class="analysis-meta">${items.length}/${COMPARISON_METHODS.length} metodi salvati. Voti: Redazione Fantacalcio. Bonus/malus classici, imbattibilità +1 e modificatore secondo le regole salvate. Sostituzioni stesso ruolo, ordine P/D/C/A.</p>
+      <p class="analysis-meta">${items.length}/${COMPARISON_METHODS.length} metodi salvati. Voti: ${escape(voteProvider(team.listSource))}. Bonus/malus classici, imbattibilità +1 e modificatore secondo le regole salvate. Sostituzioni stesso ruolo, ordine P/D/C/A.</p>
       <p role="status">${escape(error||notice||(busy?'Raccolta dei voti e calcolo dei punteggi…':allComplete&&!winners.length?'Confronto non assegnato: controlla le regole salvate, oppure aggiorna tutti i risultati.':'Il migliore viene indicato quando tutti i metodi salvati hanno risultati completi e le stesse regole.'))}</p>
       ${renderComparisonCards(items)}`;
     host.querySelector('#comparison-season').addEventListener('change',e=>{selected=rounds.find(r=>r.season===Number(e.target.value));items=[];loadRound();});

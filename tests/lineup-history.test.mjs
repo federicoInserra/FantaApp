@@ -93,11 +93,11 @@ test('ranking API uses existing saved scores across rounds, isolates teams and u
     const collect=async()=>f.votes,options={store,collect,now:new Date('2026-10-03T12:00:00Z')};
     await handleLineups(req(body),options);
     const next=historyFixture({matchday:9});await save(next.state);
-    await store.score(f.team.id,2026,9,'deepseek','deepseek',{status:'complete',total:75,checkedAt:'2026-10-05T12:00:00Z'});
+    await store.score(f.team.id,2026,9,'deepseek','deepseek',{provider:'Redazione Fantacalcio',status:'complete',total:75,checkedAt:'2026-10-05T12:00:00Z'});
     const read=async()=> (await (await handleLineups(new Request(`https://app.test/api/lineups?teamId=${f.team.id}`),options)).json()).rankings.find(r=>r.method==='deepseek');
     assert.equal((await read()).total,143);assert.equal((await read()).scored,2);
     await handleLineups(req(body),options);assert.equal((await read()).total,143);
-    await store.score(f.team.id,2026,9,'deepseek','deepseek',{status:'complete',total:76,checkedAt:'2026-10-06T12:00:00Z'});
+    await store.score(f.team.id,2026,9,'deepseek','deepseek',{provider:'Redazione Fantacalcio',status:'complete',total:76,checkedAt:'2026-10-06T12:00:00Z'});
     assert.equal((await read()).total,144);
     const state=(await store.read()).state;state.teams[0].recommendation=next.rec('deepseek','replacement');await save(state);
     assert.equal((await read()).total,68);assert.equal((await read()).scored,1);
@@ -106,5 +106,23 @@ test('ranking API uses existing saved scores across rounds, isolates teams and u
     await store.score('other-team',2026,8,'deepseek','deepseek',{status:'complete',total:999,checkedAt:'2026-10-06T12:00:00Z'});
     assert.equal((await read()).total,68);
     const compact=await store.rankingHistory(f.team.id);assert.equal(compact.length,2);assert.equal(compact[0].record,undefined);assert.ok(Array.isArray(compact[0].rules));
+  }finally{await pg.close();}
+});
+test('team listone selects vote provider, hides old-source rankings and preserves archived lineups on recalculation',async()=>{
+  const {pg,store,save}=await database(),f=historyFixture();try{
+    await save(f.state);const request=()=>req({teamId:f.team.id,season:2026,matchday:8});
+    const options={store,now:new Date('2026-10-13T12:00:00Z'),collect:async()=>f.votes};
+    await handleLineups(request(),options);
+    const original=(await store.history(f.team.id,2026,8))[0].record;
+    const state=(await store.read()).state;state.teams[0].listSource='fantamaster';await save(state);
+    const response=await handleLineups(new Request(`https://app.test/api/lineups?teamId=${f.team.id}&season=2026&matchday=8`),options),pending=await response.json();
+    assert.equal(pending.items[0].actual_result.status,'pending');assert.equal(pending.rankings.find(r=>r.method==='deepseek').scored,0);
+    assert.equal((await handleLineups(request(),options)).status,502);
+    const fm=structuredClone(f.votes);fm.provider='FantaMaster';fm.identity='fantamaster';fm.sourceUrl='https://publicapi.fantamaster.it/ratings/?day=8';fm.retrievedAt='2026-10-13T12:00:00Z';fm.players.forEach(p=>p.id='fm-'+p.id);
+    fm.players.find(p=>p.name===original.players.find(p=>p.id==='A0').name).fantasyVote=10;
+    let listSource;
+    const res=await handleLineups(request(),{...options,collect:async(_s,_d,o)=>{listSource=o.listSource;return fm;}}),data=await res.json();
+    assert.equal(res.status,200);assert.equal(listSource,'fantamaster');assert.equal(data.items[0].actual_result.provider,'FantaMaster');assert.equal(data.items[0].actual_result.total,72);assert.equal(data.rankings.find(r=>r.method==='deepseek').total,72);
+    assert.deepEqual((await store.history(f.team.id,2026,8))[0].record,original);
   }finally{await pg.close();}
 });

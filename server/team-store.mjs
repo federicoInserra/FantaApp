@@ -77,7 +77,7 @@ export function createTeamStore(sql) {
     async history(teamId,season,matchday) {
       await init();
       if(season!==undefined)return sql`SELECT method,recommendation_id,record,actual_result,updated_at FROM fantaapp_lineup_history WHERE team_id=${teamId} AND season=${season} AND matchday=${matchday} ORDER BY method`;
-      return sql`SELECT season,matchday,method,recommendation_id,record->'recommendation'->>'createdAt' AS created_at,actual_result->>'status' AS status,actual_result->'total' AS total FROM fantaapp_lineup_history WHERE team_id=${teamId} ORDER BY season DESC,matchday DESC,method`;
+      return sql`SELECT season,matchday,method,recommendation_id,record->'recommendation'->>'createdAt' AS created_at,actual_result->>'status' AS status,actual_result->'total' AS total,actual_result->>'provider' AS provider FROM fantaapp_lineup_history WHERE team_id=${teamId} ORDER BY season DESC,matchday DESC,method`;
     },
     async rankingHistory(teamId) {
       await init();
