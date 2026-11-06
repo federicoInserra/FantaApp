@@ -61,6 +61,12 @@ Il calendario contiene orari UTC e non espone il numero della giornata. L’AI d
 
 Verifica senza API a pagamento: `node scripts/understat-smoke.mjs`. I report `research-results/` sono esclusi da Git. Su Vercel il frontend usa il relay dello stesso dominio; il Worker Cloudflare rimane un’alternativa separata.
 
+Se Understat restituisce un errore, HTML anziché JSON, dati non validi o supera il timeout, lo stesso relay prova automaticamente **Opta Analyst**. Legge la pagina fissa `https://theanalyst.com/competition/serie-a/stats`, verifica campionato e stagione selezionata e ricava l’identificatore del calendario dai dati della pagina. Scarica esclusivamente i due file pubblici `player-stats.json` e `team-stats.json` sul dominio `dataviz.theanalyst.com`. Nessuna chiave o cookie viene inoltrata. Il fallback è disponibile soltanto per la stagione corrente; file aggiornati da oltre 48 ore, identità incoerenti, duplicati e formati non validi vengono rifiutati. Timeout aggiuntivo 12 secondi, dimensione pagina massima 2 MB e file massimi 4 MB ciascuno.
+
+Opta fornisce xG, npxG, xA, tiri, presenze e minuti dei giocatori e xG/xGA complessivi delle squadre. I portieri provengono dalla tabella dedicata: le statistiche offensive non presenti restano mancanti. Valori per 90 e medie per partita sono calcolati dal codice. Calendario, ultima partita e medie casa/trasferta restano mancanti: senza una partita futura confermata, il sistema esclude avversari e probabili formazioni e richiede una proposta provvisoria. Il nome del provider e il timestamp di aggiornamento della fonte sono visibili e salvati con la ricerca. I valori dei due modelli xG/xA non devono essere confrontati direttamente o mescolati. Per compatibilità, il campo salvato si chiama ancora `understat`, ma `provider` distingue `Understat` da `Opta Analyst`.
+
+Anche il fallback usa la cache server di cinque minuti; alla scadenza si riprova prima Understat. Se entrambe le fonti falliscono, la ricerca si interrompe senza sostituire l’ultimo risultato salvato. Le risposte API restano escluse dalle cache pubbliche di Vercel e del service worker. I file di Opta Analyst sono feed del sito, non un’API pubblica garantita: possono cambiare e l’accessibilità non sostituisce i diritti d’uso previsti dai termini di Stats Perform.
+
 ## Sviluppo e deploy
 
 ```sh

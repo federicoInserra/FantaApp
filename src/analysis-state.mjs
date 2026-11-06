@@ -14,8 +14,8 @@ function sourceMetadata(source){
 }
 function compactUnderstat(data){
   if(!validUnderstatSnapshot(data))fail();
-  const result=pick(data,['version','provider','league','season','retrievedAt','latestMatchAt','sourceUrl']);
-  const summary=o=>pick(o,['games','xg','xga','xgPerMatch','xgaPerMatch']);
+  const result=pick(data,['version','provider','league','season','retrievedAt','updatedAt','latestMatchAt','sourceUrl']);
+  const summary=o=>o===null ? null : pick(o,['games','xg','xga','xgPerMatch','xgaPerMatch']);
   result.players=data.players.map(p=>({...pick(p,['rosterId','name','teamId','reason']),player:p.player?pick(p.player,['id','name','clubs','teamIds','games','minutes','xg','npxg','xa','shots','xgPer90','npxgPer90','xaPer90']):null}));
   result.teams=data.teams.map(t=>({...pick(t,['id','name','lastMatchAt']),overall:summary(t.overall),home:summary(t.home),away:summary(t.away)}));
   result.fixtures=data.fixtures.map(f=>pick(f,['id','homeId','awayId','kickoff','completed']));

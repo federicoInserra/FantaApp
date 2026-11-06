@@ -40,13 +40,13 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     const ids=preview.teams.map(t=>understat.teams.filter(u=>club(u.name)===club(t)));
     const fixtures=ids.every(list=>list.length===1)?understat.fixtures.filter(f=>!f.completed&&f.homeId===ids[0][0].id&&f.awayId===ids[1][0].id&&Date.parse(f.kickoff)>now.getTime()):[];
     // A fresh page can still describe an old/different match. Never merge those forecasts.
-    if(fixtures.length!==1){warnings.push(`${p.name}: calendario Fantacalcio/Understat non confermato; previsioni escluse.`);return {...p,observations,missing:[]};}
+    if(fixtures.length!==1){warnings.push(`${p.name}: calendario Fantacalcio/${understat.provider} non confermato; previsioni escluse.`);return {...p,observations,missing:[]};}
     const detail={id:`F${sources.length+1}`,url:'https://www.fantacalcio.it/probabili-formazioni-serie-a',title:`Fantacalcio · giornata ${preview.matchday}`,text:'',retrievedAt:data.retrievedAt};sources.push(detail);
     const period=`Giornata ${preview.matchday} · ${season}`;
     const side=club(preview.teams[0])===club(p.club)?0:1;
     add('opponent',preview.teams[1-side],detail,'fact',period,preview.updatedAt);
     add('venue',side===0?'Casa':'Trasferta',detail,'fact',period,preview.updatedAt);
-    const fixtureSource=sources.find(s=>s.id==='U1')??{id:'U1',url:understat.sourceUrl,title:'Understat · calendario',text:'',retrievedAt:understat.retrievedAt};if(!sources.includes(fixtureSource))sources.push(fixtureSource);
+    const fixtureSource=sources.find(s=>s.id==='U1')??{id:'U1',url:understat.sourceUrl,title:`${understat.provider} · calendario`,text:'',retrievedAt:understat.retrievedAt};if(!sources.includes(fixtureSource))sources.push(fixtureSource);
     add('kickoff',fixtures[0].kickoff,fixtureSource,'fact',period);
     const statuses=preview.players.filter(q=>q.id===row.id&&club(q.club)===club(p.club));
     if(statuses.length===1){

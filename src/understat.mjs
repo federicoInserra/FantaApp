@@ -87,11 +87,16 @@ export async function fetchUnderstat({serviceURL,season=seasonAt(new Date()),sig
   let response;
   try { response=await fetchImpl(`${origin}/api/understat?season=${season}`,{method:'GET',credentials:'same-origin',referrerPolicy:'no-referrer',signal}); }
   catch(error) { if(signal?.aborted)throw error;throw new Error('Servizio Understat non raggiungibile. Verifica URL e connessione.'); }
-  if(!response.ok) throw new Error(`Understat non disponibile (HTTP ${response.status}). Nessun dato stimato.`);
+  if(!response.ok) throw new Error(`Statistiche Understat/Opta Analyst non disponibili (HTTP ${response.status}). Nessun dato stimato.`);
   const data=await response.json();
   // Relay returns only raw public fields plus its acquisition time; normalize again at the browser boundary.
   const acquiredAt=new Date(data.retrievedAt),age=now.getTime()-acquiredAt.getTime();
   if(data.season!==season || !Number.isFinite(age) || age < -60000 || age>15*60*1000) throw new Error('Risposta Understat scaduta o stagione errata.');
+  if(data.provider === 'Opta Analyst') {
+    const league = data.league;
+    if(!validLeague(league) || league.provider !== data.provider || league.season !== season || league.retrievedAt !== data.retrievedAt || now.getTime()-Date.parse(league.updatedAt)>48*3600000) throw new Error('Risposta Opta Analyst non valida o scaduta.');
+    return league;
+  }
   return normalizeLeague(data.data,season,acquiredAt);
 }
 export function understatSnapshot(league, roster, now=new Date()) {
@@ -104,10 +109,27 @@ export function validUnderstatSnapshot(data) {
   const text = s => typeof s === 'string' && s.length < 200;
   const date = d => typeof d === 'string' && Number.isFinite(Date.parse(d));
   const summary = s => s && Number.isInteger(s.games) && s.games >= 0 && ['xg','xga','xgPerMatch','xgaPerMatch'].every(k=>number(s[k]));
+  const opta = data?.provider === 'Opta Analyst';
   try {
-    return data?.version===1 && data.provider==='Understat' && data.league==='Serie_A' && Number.isInteger(data.season) && data.season>=2014 && date(data.retrievedAt) && (data.latestMatchAt===null || date(data.latestMatchAt)) && data.sourceUrl===`https://understat.com/league/Serie_A/${data.season}` &&
+    return data?.version===1 && (data.provider==='Understat' || opta) && data.league==='Serie_A' && Number.isInteger(data.season) && data.season>=2014 && date(data.retrievedAt) && (data.latestMatchAt===null || date(data.latestMatchAt)) && data.sourceUrl===(opta ? 'https://theanalyst.com/competition/serie-a/stats' : `https://understat.com/league/Serie_A/${data.season}`) && (!opta || date(data.updatedAt) && Date.parse(data.updatedAt)<=Date.parse(data.retrievedAt)+60000) &&
       Array.isArray(data.players) && data.players.length<=40 && data.players.every(p=>text(p.rosterId) && text(p.name) && text(p.reason) && (p.player===null || text(p.player.id) && text(p.player.name) && Array.isArray(p.player.clubs) && p.player.clubs.every(text) && ['games','minutes','xg','npxg','xa','shots','xgPer90','npxgPer90','xaPer90'].every(k=>number(p.player[k])))) &&
-      Array.isArray(data.teams) && data.teams.length>0 && data.teams.length<=30 && data.teams.every(t=>text(t.id)&&text(t.name)&&summary(t.overall)&&summary(t.home)&&summary(t.away)) &&
-      Array.isArray(data.fixtures) && data.fixtures.length<=500 && data.fixtures.every(f=>text(f.id)&&text(f.homeId)&&text(f.awayId)&&date(f.kickoff)&&typeof f.completed==='boolean');
+      Array.isArray(data.teams) && data.teams.length>0 && data.teams.length<=30 && data.teams.every(t=>text(t.id)&&text(t.name)&&summary(t.overall)&&(opta ? t.home===null && t.away===null : summary(t.home)&&summary(t.away))) &&
+      Array.isArray(data.fixtures) && data.fixtures.length<=500 && (!opta || data.fixtures.length===0 && data.latestMatchAt===null) && data.fixtures.every(f=>text(f.id)&&text(f.homeId)&&text(f.awayId)&&date(f.kickoff)&&typeof f.completed==='boolean');
+  } catch { return false; }
+}
+
+// Full league validation at the fallback's browser boundary, before matching a roster.
+export function validLeague(data) {
+  try {
+    const ids = new Set(data.teams.map(t=>t.id));
+    const label = value => typeof value==='string' && value.trim().length>0 && value.length<160;
+    if(!Number.isInteger(data.season) || data.season>seasonAt(new Date(data.retrievedAt)) || !Array.isArray(data.players) || !data.players.length || data.players.length>2000) return false;
+    if([data.teams,data.players,data.fixtures].some(list=>new Set(list.map(p=>p.id)).size!==list.length)) return false;
+    if(!data.teams.every(t=>label(t.id) && label(t.name))) return false;
+    if(!data.players.every(p=>label(p.id) && label(p.name) && Array.isArray(p.teamIds) && p.teamIds.length>0 && p.teamIds.every(id=>ids.has(id)) && Array.isArray(p.clubs) && p.clubs.length>0 && p.clubs.every(label))) return false;
+    for(let i=0;i<data.players.length;i+=40) {
+      if(!validUnderstatSnapshot({...data,players:data.players.slice(i,i+40).map(p=>({rosterId:p.id,name:p.name,reason:'',player:p}))})) return false;
+    }
+    return true;
   } catch { return false; }
 }

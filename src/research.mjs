@@ -12,7 +12,7 @@ export function staleReason(data, team, matchday = '', now = Date.now()) {
   if (data.matchday !== matchday.trim()) return 'La giornata è cambiata. Aggiorna i dati.';
   const age = now - Date.parse(data.createdAt);
   if (!Number.isFinite(age) || age < 0 || age > 6 * 60 * 60 * 1000) return 'Dati più vecchi di 6 ore. Aggiornali prima dell’analisi.';
-  if (!data.understat || data.understat.provider !== 'Understat') return 'Mancano i dati Understat. Aggiorna la raccolta.';
+  if (!data.understat || !['Understat','Opta Analyst'].includes(data.understat.provider)) return 'Mancano i dati Understat/Opta Analyst. Aggiorna la raccolta.';
   if (!data.players?.some(player => player.observations?.length) && !data.understat.players?.some(p => p.player)) return 'Nessun dato utilizzabile. Riprova la ricerca.';
   return '';
 }
@@ -63,13 +63,14 @@ Rispondi solo JSON: {"players":[{"id":"ID fornito","observations":[{"field":"uno
 export async function researchSquad({ team, matchday = '', understatURL, signal, fetchImpl = fetch, now = new Date(), onProgress = () => {} }) {
   if (!team.players.length || team.players.length > 40) throw new Error('La ricerca richiede una rosa da 1 a 40 giocatori.');
   if (!team.listSource && team.importedFrom !== 'txt') throw new Error('Scegli un listone e usa una rosa reale.');
-  onProgress('Lettura statistiche Understat…');
+  onProgress('Lettura statistiche Understat (Opta Analyst di riserva)…');
   const understat = understatSnapshot(await fetchUnderstat({serviceURL:understatURL,signal,fetchImpl,now}),team.players,now);
   onProgress('Lettura voti e probabili formazioni Fantacalcio…');
   const primary = await fetchPrimary({serviceURL:understatURL,signal,fetchImpl,now});
   const result = primaryObservations(primary,team,understat,matchday,now);
   for(const player of result.players) player.missing=Object.keys(FIELDS).filter(field=>!['minutes','xg','xa','shots'].includes(field)&&!player.observations.some(o=>o.field===field));
-  for(const player of understat.players) if(player.reason) result.warnings.push(`${player.name}: Understat · ${player.reason}`);
-  if(!result.sources.some(s=>s.id==='U1'))result.sources.push({id:'U1',url:understat.sourceUrl,title:'Understat · Serie A',text:'Dati numerici letti direttamente dal provider.',retrievedAt:understat.retrievedAt});
+  if(understat.provider === 'Opta Analyst') result.warnings.push('Understat non disponibile: statistiche da Opta Analyst. Calendario, data ultima partita e medie casa/trasferta non disponibili; probabili formazioni e avversari non confermati. Proposta provvisoria. I modelli xG/xA dei provider sono diversi: non confrontare direttamente i valori.');
+  for(const player of understat.players) if(player.reason) result.warnings.push(`${player.name}: ${understat.provider} · ${player.reason}`);
+  if(!result.sources.some(s=>s.id==='U1'))result.sources.push({id:'U1',url:understat.sourceUrl,title:`${understat.provider} · Serie A`,text:'Dati numerici letti direttamente dal provider.',retrievedAt:understat.retrievedAt});
   return {version:2,understat,createdAt:now.toISOString(),signature:squadSignature(team),matchday:matchday.trim(),...result,credits:0,requests:2,usage:[]};
 }

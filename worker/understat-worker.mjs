@@ -1,4 +1,5 @@
 import { normalizeLeague, seasonAt } from '../src/understat.mjs';
+import { fetchOpta } from './opta-source.mjs';
 const DEFAULT_ORIGINS = 'https://federicoinserra.github.io';
 export async function handleRequest(request, env={}, {fetchImpl=fetch,cache,now=new Date()}={}) {
   const url=new URL(request.url),origin=request.headers.get('Origin');
@@ -17,18 +18,24 @@ export async function handleRequest(request, env={}, {fetchImpl=fetch,cache,now=
   try {
     let response=await cache?.match(cacheKey);
     if(!response){
-      // Same public endpoint/header used by Understat's own league page. Never forward client headers or URLs.
-      const upstream=await fetchImpl(`https://understat.com/getLeagueData/Serie_A/${season}`,{headers:{'X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(15000)});
-      if(!upstream.ok) throw new Error('Upstream unavailable');
-      const text=await upstream.text();if(text.length>5_000_000)throw new Error('Response too large');
-      const raw=JSON.parse(text);normalizeLeague(raw,season,now);
-      // Strip unrelated provider fields before returning the public dataset.
-      const pick=(o,keys)=>Object.fromEntries(keys.map(k=>[k,o[k]]));
-      const data={players:raw.players.map(p=>pick(p,['id','player_name','team_title','games','time','xG','npxG','xA','shots'])),teams:Object.fromEntries(Object.entries(raw.teams).map(([key,t])=>[key,{...pick(t,['id','title']),history:t.history.map(h=>pick(h,['date','h_a','xG','xGA']))}])),dates:raw.dates.map(m=>pick(m,['id','h','a','datetime','isResult']))};
-      response=Response.json({season,retrievedAt:now.toISOString(),data},{headers:{'Cache-Control':'public, max-age=300'}});
+      try {
+        // Same public endpoint/header used by Understat's own league page. Never forward client headers or URLs.
+        const upstream=await fetchImpl(`https://understat.com/getLeagueData/Serie_A/${season}`,{headers:{'X-Requested-With':'XMLHttpRequest',Accept:'application/json'},redirect:'error',signal:AbortSignal.any([request.signal,AbortSignal.timeout(15000)])});
+        if(!upstream.ok) throw new Error('Upstream unavailable');
+        const text=await upstream.text();if(text.length>5_000_000)throw new Error('Response too large');
+        const raw=JSON.parse(text);normalizeLeague(raw,season,now);
+        // Strip unrelated provider fields before returning the public dataset.
+        const pick=(o,keys)=>Object.fromEntries(keys.map(k=>[k,o[k]]));
+        const data={players:raw.players.map(p=>pick(p,['id','player_name','team_title','games','time','xG','npxG','xA','shots'])),teams:Object.fromEntries(Object.entries(raw.teams).map(([key,t])=>[key,{...pick(t,['id','title']),history:t.history.map(h=>pick(h,['date','h_a','xG','xGA']))}])),dates:raw.dates.map(m=>pick(m,['id','h','a','datetime','isResult']))};
+        response=Response.json({season,retrievedAt:now.toISOString(),data},{headers:{'Cache-Control':'public, max-age=300'}});
+      } catch(error) {
+        if(request.signal.aborted) throw error;
+        const league=await fetchOpta({season,now,fetchImpl,signal:request.signal});
+        response=Response.json({season,retrievedAt:now.toISOString(),provider:league.provider,league},{headers:{'Cache-Control':'public, max-age=300'}});
+      }
       try { await cache?.put(cacheKey,response.clone()); } catch { /* Cache is optional, never a data dependency. */ }
     }
     const result=new Response(response.body,response);for(const [key,value] of Object.entries(cors))result.headers.set(key,value);return result;
-  } catch { return Response.json({error:'Understat unavailable or data format changed. Retry later.'},{status:502,headers:{...cors,'Cache-Control':'no-store'}}); }
+  } catch { return Response.json({error:'Understat and Opta Analyst unavailable or data format changed. Retry later.'},{status:502,headers:{...cors,'Cache-Control':'no-store'}}); }
 }
 export default {fetch(request,env){return handleRequest(request,env,{cache:globalThis.caches?.default});}};
