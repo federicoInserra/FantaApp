@@ -8,7 +8,10 @@
       "maxDuration": 30
     },
     "api/ai.mjs": {
-      "maxDuration": 180
+      "maxDuration": 300
+    },
+    "api/ai-jobs.mjs": {
+      "maxDuration": 300
     },
     "api/ai-status.mjs": {
       "maxDuration": 10
@@ -16,6 +19,8 @@
     "api/teams.mjs": {
       "maxDuration": 30
     },
+    "api/lineups.mjs": {"maxDuration": 60},
+    "api/calendar.mjs": {"maxDuration": 30},
     "api/fantacalcio.mjs": {
       "maxDuration": 30
     }

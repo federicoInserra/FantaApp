@@ -13,7 +13,7 @@ export async function fetchPrimary({serviceURL,fetchImpl=fetch,signal,now=new Da
   if(data.version!==1||!Number.isFinite(age)||age< -60000||age>900000||!Array.isArray(data.players)||!Array.isArray(data.matches)||!Array.isArray(data.warnings))throw new Error('Risposta Fantacalcio non valida o scaduta.');
   return data;
 }
-export function primaryObservations(data,team,understat,matchday,now=new Date()){
+export function primaryObservations(data,team,understat,matchday,now=new Date(),calendar=null){
   if(data.season!==understat.season)throw new Error('Stagioni delle fonti non coerenti.');
   const sources=[],warnings=[...data.warnings],season=`${data.season}/${data.season+1}`;
   const requested=matchday.trim(),dayMatch=/^(?:giornata\s*)?(\d{1,2})(?:[ª°])?$/i.exec(requested);
@@ -24,6 +24,8 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     const observations=[];
     if(matches.length!==1){warnings.push(`${p.name}: identità Fantacalcio ${matches.length?'ambigua':'non trovata'}.`);return {...p,observations,missing:[]};}
     const row=matches[0];
+    // Keep the provider's stable identity for scoring this roster after the matchday.
+    p={...p,fantacalcioId:row.id};
     const source={id:`F${sources.length+1}`,url:'https://www.fantacalcio.it/statistiche-serie-a',title:`Fantacalcio · ${row.name} · ${season}`,text:'',retrievedAt:data.retrievedAt};sources.push(source);
     const add=(field,value,source,kind='fact',period=season,updatedAt='')=>{
       const quote=`${p.name} (${p.club}) · ${period} · ${field}: ${value}`;
@@ -33,6 +35,8 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     if(row.stats.rated===0)warnings.push(`${p.name}: nessuna presenza a voto; media voto e fantamedia non disponibili.`);
     const previews=data.matches.filter(m=>m.teams.some(t=>club(t)===club(p.club))&&(!requested||dayMatch&&m.matchday===Number(dayMatch[1])));
     if(previews.length!==1){warnings.push(`${p.name}: anteprima della giornata richiesta non disponibile.`);return {...p,observations,missing:[]};}
+    const official=calendar?.fixtures.find(f=>club(f.home)===club(previews[0].teams[0])&&club(f.away)===club(previews[0].teams[1]));
+    if(calendar&&!official){warnings.push(`${p.name}: anteprima non coerente con il calendario ufficiale; previsioni escluse.`);return {...p,observations,missing:[]};}
     const preview=previews[0],updated=/^(\d{2})\/(\d{2})\/(\d{4}) - \d{2}:\d{2}$/.exec(preview.updatedAt);
     const updateDay=updated?Date.UTC(+updated[3],+updated[2]-1,+updated[1]):NaN;
     const today=Date.parse(now.toLocaleDateString('sv-SE',{timeZone:'Europe/Rome'})+'T00:00:00Z');
@@ -40,14 +44,15 @@ export function primaryObservations(data,team,understat,matchday,now=new Date())
     const ids=preview.teams.map(t=>understat.teams.filter(u=>club(u.name)===club(t)));
     const fixtures=ids.every(list=>list.length===1)?understat.fixtures.filter(f=>!f.completed&&f.homeId===ids[0][0].id&&f.awayId===ids[1][0].id&&Date.parse(f.kickoff)>now.getTime()):[];
     // A fresh page can still describe an old/different match. Never merge those forecasts.
-    if(fixtures.length!==1){warnings.push(`${p.name}: calendario Fantacalcio/${understat.provider} non confermato; previsioni escluse.`);return {...p,observations,missing:[]};}
+    const officialFallback=understat.provider==='Opta Analyst' && official && String(official.matchday)===requested && official.status==='UPCOMING' && Date.parse(official.kickoff)>now.getTime() && calendar.fixtures.filter(f=>club(f.home)===club(preview.teams[0])&&club(f.away)===club(preview.teams[1])).length===1;
+    if(fixtures.length!==1 && !officialFallback){warnings.push(`${p.name}: calendario Fantacalcio/${understat.provider??'Understat'} non confermato; previsioni escluse.`);return {...p,observations,missing:[]};}
     const detail={id:`F${sources.length+1}`,url:'https://www.fantacalcio.it/probabili-formazioni-serie-a',title:`Fantacalcio · giornata ${preview.matchday}`,text:'',retrievedAt:data.retrievedAt};sources.push(detail);
     const period=`Giornata ${preview.matchday} · ${season}`;
     const side=club(preview.teams[0])===club(p.club)?0:1;
     add('opponent',preview.teams[1-side],detail,'fact',period,preview.updatedAt);
     add('venue',side===0?'Casa':'Trasferta',detail,'fact',period,preview.updatedAt);
-    const fixtureSource=sources.find(s=>s.id==='U1')??{id:'U1',url:understat.sourceUrl,title:`${understat.provider} · calendario`,text:'',retrievedAt:understat.retrievedAt};if(!sources.includes(fixtureSource))sources.push(fixtureSource);
-    add('kickoff',fixtures[0].kickoff,fixtureSource,'fact',period);
+    const fixtureSource=sources.find(s=>s.id==='U1')??{id:'U1',url:understat.sourceUrl,title:`${understat.provider??'Understat'} · calendario`,text:'',retrievedAt:understat.retrievedAt};if(!official && !sources.includes(fixtureSource))sources.push(fixtureSource);
+    add('kickoff',official?.kickoff??fixtures[0].kickoff,official?{id:'L1',text:''}:fixtureSource,'fact',period);
     const statuses=preview.players.filter(q=>q.id===row.id&&club(q.club)===club(p.club));
     if(statuses.length===1){
       const status=statuses[0];

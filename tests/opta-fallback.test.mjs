@@ -118,7 +118,7 @@ test('fallback cache expires and retries Understat on recovery; both-provider er
   assert.equal(count,1);
 });
 
-test('fallback research survives persistence and analysis, without unsupported forecasts or false source labels',async()=>{
+test('fallback research survives persistence and analysis, using only official fixtures for forecasts',async()=>{
   const {parseStats,parseLineups}=await import('../server/fantacalcio-source.mjs');
   const {readFile}=await import('node:fs/promises');
   const players=parseStats(await readFile(new URL('./fixtures/fantacalcio-stats.html',import.meta.url),'utf8'),2026);
@@ -126,16 +126,25 @@ test('fallback research survives persistence and analysis, without unsupported f
   const team={id:'one',listSource:'leghe',players:[{id:'r',name:'Delprato',club:'Parma',role:'D'},{id:'p',name:'Player S',club:'Inter',role:'A'}]};
   const response=await handleVercelUnderstat(request(),{now,cache:createLeagueCache(),fetchImpl:upstream()});
   const envelope=await response.json();
-  const research=await researchSquad({team,now,understatURL:'https://relay.example',fetchImpl:async url=>url.includes('/api/understat')?Response.json(envelope):Response.json({version:1,season:2026,retrievedAt:now.toISOString(),players,matches,warnings:[]})});
+  const primary={version:1,season:2026,retrievedAt:now.toISOString(),players,matches,warnings:[]};
+  const calendar={version:1,season:2026,retrievedAt:now.toISOString(),fixtures:Array.from({length:10},(_,i)=>({matchday:6,home:i?'Home'+i:'Inter',away:i?'Away'+i:'Parma',kickoff:'2026-10-10T16:00:00Z',status:'UPCOMING'}))};
+  const research=await researchSquad({team,now,understatURL:'https://relay.example',fetchImpl:async url=>url.includes('/api/understat')?Response.json(envelope):Response.json(url.endsWith('/api/calendar')?calendar:primary)});
   research.id='research-opta';research.completedAt=now.toISOString();
   const saved=storedResearch(JSON.parse(JSON.stringify(storedResearch(research))));
   assert.equal(saved.understat.provider,'Opta Analyst');assert.equal(saved.understat.updatedAt,now.toISOString());
   assert.equal(saved.understat.teams[0].home,null);
-  assert.equal(staleReason(saved,team,'',now.getTime()),'');
+  assert.equal(staleReason(saved,team,'6',now.getTime()),'');
   assert.equal(saved.sources.find(s=>s.id==='U1').title,'Opta Analyst · Serie A');
   assert.ok(saved.warnings.some(w=>w.includes('Understat non disponibile')));
   assert.ok(saved.players[0].observations.some(o=>o.field==='fantamedia'));
-  assert.ok(!saved.players.some(p=>p.observations.some(o=>['starting','opponent','kickoff'].includes(o.field))));
+  assert.ok(saved.players[0].observations.some(o=>o.field==='starting'));
+  assert.ok(saved.players[0].observations.some(o=>o.field==='kickoff'&&o.sourceId==='L1'));
+  assert.deepEqual(saved.understat.fixtures,[]);
+  const {primaryObservations}=await import('../src/primary-research.mjs');
+  for(const c of [null,{...calendar,fixtures:[]},{...calendar,fixtures:[...calendar.fixtures,calendar.fixtures[0]]},{...calendar,fixtures:calendar.fixtures.map(f=>({...f,kickoff:'2026-10-01T00:00:00Z'}))}]) {
+    const observations=primaryObservations(primary,team,saved.understat,'6',now,c);
+    assert.ok(!observations.players.some(p=>p.observations.some(o=>['starting','opponent','kickoff'].includes(o.field))));
+  }
   const input=JSON.parse(buildRequest(team,'','',now,saved).input);
   assert.equal(input.raccolta.understat.provider,'Opta Analyst');
   for(const mutate of [d=>d.understat.sourceUrl='https://evil.example',d=>d.understat.teams[0].home={games:0,xg:null,xga:null,xgPerMatch:null,xgaPerMatch:null}]) {

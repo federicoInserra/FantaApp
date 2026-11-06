@@ -1,14 +1,19 @@
 import {withAnalysisResult} from './analysis-state.mjs';
 import { DatabaseTeams } from './cloud-sync.mjs';
 import { RULE_GROUPS, teamRules } from './rules.mjs';
-import { setupAnalysis, mountAnalysis } from './analysis-ui.mjs';
+import { setupAnalysis, mountAnalysis, changeAnalysisFormation } from './analysis-ui.mjs';
 import { LISTS, loadCatalog, filterCatalog, hasPlayer, rosterPlayer } from './catalog.mjs';
-import { FORMATIONS, ROLES, playerScore, suggestLineup } from './lineup.mjs';
+import { ROLES } from './lineup.mjs';
+import {renderFormationLayout} from './formation-view.mjs';
+import {renderPlayerAnalysis} from './player-analysis.mjs';
+import {mountComparison} from './comparison-ui.mjs';
+import {mountManualFormation} from './manual-lineup-ui.mjs';
 
 import { createTeam, parseTeamText, MAX_IMPORT_BYTES } from './import-team.mjs';
 const roleOrder = ['P', 'D', 'C', 'A'];
 function uid() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`; }
 let state;
+let pitchTeam;
 function cloudStatus({mode,message}) {
   const labels={loading:'Caricamento squadre…',saved:'Salvato nel database',saving:'Salvataggio…',error:'Database non disponibile'};
   document.querySelector('.save-indicator').textContent=labels[mode];
@@ -18,7 +23,7 @@ function cloudStatus({mode,message}) {
 }
 const cloud=new DatabaseTeams({onStatus:cloudStatus});
 await cloud.load();state=cloud.state;
-const pages = ['panoramica', 'rosa', 'formazione', 'regole'];
+const pages = ['panoramica', 'rosa', 'formazione', 'confronto', 'regole'];
 let page = 'panoramica';
 let roleFilter = 'Tutti';
 let rosterQuery = '';
@@ -41,7 +46,6 @@ async function save() {
 }
 function activeTeam() { return state.teams.find(team => team.id === state.activeTeamId) ?? state.teams[0]; }
 function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
-function formatScore(value) { return value == null ? '—' : Number(value).toFixed(1).replace('.', ','); }
 function button(label, action, className = 'button button-primary') { return `<button class="${className}" type="button" data-action="${action}">${label}</button>`; }
 function roleBadge(role) { return `<span class="role-badge role-${role}">${role}</span>`; }
 function pageHeader(kicker, title, description, action = '') { return `<div class="page-heading"><div><p class="eyebrow">${kicker}</p><${page === 'panoramica' ? 'h1' : 'h2'}>${title}</${page === 'panoramica' ? 'h1' : 'h2'}><p class="heading-description">${description}</p></div>${action}</div>`; }
@@ -49,7 +53,7 @@ function listLabel(team) { return team.listSource ? LISTS[team.listSource] : 'Li
 function teamContext(team) {
   return `<a class="back-link" href="#panoramica">← Le mie squadre</a>
     <div class="team-context"><h1>${escapeHTML(team.name)}</h1><button class="button button-quiet" type="button" data-action="team-options" aria-label="Gestisci ${escapeHTML(team.name)}">Gestisci</button></div>
-    <nav class="team-nav" aria-label="Sezioni della squadra">${[['rosa', 'Rosa'], ['formazione', 'Formazione'], ['regole', 'Regole']].map(([target, label]) => `<a href="#${target}/${encodeURIComponent(team.id)}" ${page === target ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
+    <nav class="team-nav" aria-label="Sezioni della squadra">${[['rosa', 'Rosa'], ['formazione', 'Formazione'], ['confronto', 'Confronto'], ['regole', 'Regole']].map(([target, label]) => `<a href="#${target}/${encodeURIComponent(team.id)}" ${page === target ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
 }
 function renderOverview() {
   return `${pageHeader('IL TUO FANTACALCIO', 'Le mie squadre', 'Scegli una squadra per aprire la rosa.', state.teams.length ? button('+ Nuova squadra', 'new-team') : '')}
@@ -71,11 +75,11 @@ function renderRoster(team) {
 }
 
 function renderFormation(team) {
-  const lineup = suggestLineup(team.players, team.formation);
-  const count = Object.values(lineup.starters).flat().length;
   return `${pageHeader('PRONTA PER IL CAMPO', 'La formazione', 'Prepara l’undici e chiedi un consiglio aggiornato per la prossima giornata.')}
-    <div id="ai-analysis"></div><div class="formation-layout"><section class="pitch-card"><div class="pitch-card-head"><div><p class="eyebrow">UNDICI SUGGERITO</p><h2>${escapeHTML(team.formation)} <span>· ${count}/11</span></h2></div><span class="demo-tag">BOZZA INDICATIVA</span></div><div class="pitch" aria-label="Formazione suggerita">${['A', 'C', 'D', 'P'].map(role => `<div class="pitch-line">${lineup.starters[role].map(player => `<div class="pitch-player"><span class="pitch-player-icon">${role}</span><strong>${escapeHTML(player.name.split(' ').at(-1))}</strong><small>${formatScore(playerScore(player))}</small></div>`).join('')}${Array.from({ length: lineup.missing[role] }, () => `<div class="pitch-player pitch-empty"><span class="pitch-player-icon">+</span><strong>Da aggiungere</strong></div>`).join('')}</div>`).join('')}<div class="pitch-center"></div></div><p class="pitch-caption">Punteggio demo = 55% forma + 45% media voto, solo quando presenti. I giocatori senza statistiche sono ordinati per nome dopo quelli con punteggio demo: questa bozza non è una raccomandazione basata su dati reali. Gli assenti sono esclusi.</p></section>
-    <aside class="formation-side"><section class="content-card compact"><p class="eyebrow">SCELTA DEL MODULO</p><h2>Come scendiamo in campo?</h2><label class="select-label" for="formation-select">Modulo</label><select id="formation-select">${Object.keys(FORMATIONS).map(formation => `<option value="${formation}" ${team.formation === formation ? 'selected' : ''}>${formation}</option>`).join('')}</select><p class="field-hint">La proposta si aggiorna quando cambi modulo o disponibilità.</p></section><section class="content-card compact"><p class="eyebrow">RIEPILOGO</p><h2>${lineup.complete ? 'Formazione completa' : 'Mancano giocatori'}</h2><div class="role-summary">${roleOrder.map(role => `<div><span>${roleBadge(role)} ${ROLES[role]}</span><strong>${lineup.starters[role].length}/${FORMATIONS[team.formation]?.[role] ?? FORMATIONS['3-4-3'][role]}</strong></div>`).join('')}</div>${button('Vai alla rosa <span>→</span>', 'go-roster', 'text-button')}</section></aside></div>`;
+    <div id="ai-analysis"></div><div id="formation-view">${renderFormationLayout(team)}</div>`;
+}
+function renderComparison() {
+  return `${pageHeader('RISULTATI PER METODO', 'Confronto formazioni', 'Le proposte salvate per stagione e giornata, con i fantapunti calcolati dai risultati delle partite.')}<p class="data-note">Rigenerare lo stesso metodo nella stessa giornata sostituisce la sua proposta. Rosa, panchina e regole restano conservate con ogni formazione. I risultati si aggiornano automaticamente aprendo questa pagina; puoi aggiornarli anche dopo eventuali rettifiche dei voti.</p><div id="lineup-comparison"></div>`;
 }
 
 function renderRules(team) {
@@ -106,8 +110,9 @@ function render() {
   if (!team && page !== 'panoramica') page = 'panoramica';
   document.querySelector('#breadcrumb').textContent = page === 'panoramica' ? 'Le mie squadre' : team.name;
   document.title = `${page === 'panoramica' ? 'Le mie squadre' : team.name} · FantaApp`;
-  app.innerHTML = `<div class="page-content">${page === 'panoramica' ? renderOverview() : teamContext(team) + ({ rosa: renderRoster, formazione: renderFormation, regole: renderRules })[page](team)}</div>`;
+  app.innerHTML = `<div class="page-content">${page === 'panoramica' ? renderOverview() : teamContext(team) + ({ rosa: renderRoster, formazione: renderFormation, confronto:renderComparison, regole: renderRules })[page](team)}</div>`;
   if (page === 'formazione') mountAnalysis(team);
+  if (page === 'confronto') mountComparison(team);
 }
 function readRoute() {
   const [target, encodedId] = location.hash.slice(1).split('/');
@@ -126,12 +131,14 @@ function navigate(target) {
   if (location.hash === hash) { page = target; render(); }
   else location.hash = hash;
 }
-function showPlayer(id) {
-  const player = activeTeam()?.players.find(item => item.id === id);
+function showPlayer(id,fromPitch=false) {
+  const team=fromPitch&&page==='formazione'&&pitchTeam?.id===activeTeam()?.id?pitchTeam:activeTeam();
+  const player = team?.players.find(item => item.id === id),livePlayer=activeTeam()?.players.find(item=>item.id===id);
   if (!player) return;
-  document.querySelector('#player-detail-content').innerHTML = `<p class="eyebrow">${ROLES[player.role]}</p><h2 id="player-detail-title">${escapeHTML(player.name)}</h2><p>${escapeHTML(player.club)}</p><div class="player-availability"><span>Disponibilità</span><button type="button" class="button button-outline" data-action="toggle-player" data-id="${escapeHTML(id)}" aria-pressed="${player.available !== false}">${player.available === false ? 'Assente' : 'Disponibile'}</button></div><p class="field-hint">Tocca per cambiare la disponibilità. Gli assenti vengono esclusi dalla formazione.</p><button class="button button-quiet danger-action" type="button" data-action="remove-player" data-id="${escapeHTML(id)}">Rimuovi dalla rosa</button>`;
+  document.querySelector('#player-detail-content').innerHTML = `<p class="eyebrow">${ROLES[player.role]}</p><h2 id="player-detail-title">${escapeHTML(player.name)}</h2><p>${escapeHTML(player.club)}</p>${renderPlayerAnalysis(team,id,{fromPitch,saved:fromPitch,matchday:team.research?.matchday??''})}${livePlayer?`<div class="player-availability"><span>Disponibilità</span><button type="button" class="button button-outline" data-action="toggle-player" data-id="${escapeHTML(id)}" aria-pressed="${livePlayer.available !== false}">${livePlayer.available === false ? 'Assente' : 'Disponibile'}</button></div><p class="field-hint">Tocca per cambiare la disponibilità. Gli assenti vengono esclusi dalla formazione.</p><button class="button button-quiet danger-action" type="button" data-action="remove-player" data-id="${escapeHTML(id)}">Rimuovi dalla rosa</button>`:'<p class="field-hint">Questo giocatore appartiene alla formazione salvata e non è più nella rosa attuale.</p>'}`;
   const dialog = document.querySelector('#player-detail-dialog');
   dialog.dataset.playerId = id;
+  dialog.dataset.fromPitch=String(fromPitch);
   if (!dialog.open) dialog.showModal();
 }
 document.addEventListener('click', async event => {
@@ -164,11 +171,14 @@ document.addEventListener('click', async event => {
   if (action === 'new-player') openCatalog();
   if (action === 'go-formation') navigate('formazione');
   if (action === 'go-roster') navigate('rosa');
-  if (action === 'player-details') showPlayer(id);
+  if (action === 'restore-recommendation') {
+    changeAnalysisFormation();
+  }
+  if (action === 'player-details') showPlayer(id,actionElement.dataset.origin==='pitch');
   if (action === 'clear-filters') { roleFilter = 'Tutti'; rosterQuery = ''; render(); document.querySelector('#roster-search')?.focus(); }
   if (action === 'toggle-player') {
     const player = activeTeam().players.find(item => item.id === id);
-    if (player) { player.available = player.available === false; if (!await save()) render(); if(!cloud.ready)return; render(); showPlayer(id); document.querySelector('#player-detail-content [data-action="toggle-player"]').focus(); }
+    if (player) { player.available = player.available === false; if (!await save()) render(); if(!cloud.ready)return; render(); showPlayer(id,document.querySelector('#player-detail-dialog').dataset.fromPitch==='true'); document.querySelector('#player-detail-content [data-action="toggle-player"]').focus(); }
   }
   if (action === 'remove-player') {
     const team = activeTeam(); const player = team.players.find(item => item.id === id);
@@ -200,9 +210,28 @@ document.querySelector('#player-dialog').addEventListener('close', () => {
 });
 document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 
-app.addEventListener('change', async event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; render(); } if (event.target.id === 'formation-select') { activeTeam().formation = event.target.value; await save(); render(); } });
+app.addEventListener('change', async event => { if (event.target.id === 'team-select') { state.activeTeamId = event.target.value; render(); } if (event.target.id === 'formation-select') changeAnalysisFormation(event.target.value); });
 window.addEventListener('hashchange', () => { readRoute(); window.scrollTo(0, 0); app.focus({ preventScroll: true }); });
-setupAnalysis({saveResult:async(teamId,kind,result,expectedFingerprint)=>{
+setupAnalysis({onContextChange:(team,matchday,manual,history)=>{
+  const host=document.querySelector('#formation-view');
+  if(host&&page==='formazione'&&activeTeam()?.id===team.id){
+    if(manual)mountManualFormation(host,team,manual.draft,manual);
+    else {
+      const selected=history?.team??team;
+      const view={...selected,formation:history?.previewFormation??selected.formation};pitchTeam=view;
+      const selection=history?.selection;
+      const message=selection?.state==='loading'?'Caricamento della formazione salvata…':selection?.state==='error'?selection.error:'Nessuna formazione salvata per questo metodo e questa giornata.';
+      host.innerHTML=renderFormationLayout(view,matchday,Date.now(),{saved:true,empty:!selected.recommendation,message})+(selection?.state==='error'?'<button type="button" id="method-load-retry" class="button button-outline">Riprova caricamento</button>':'');
+      host.querySelector('#method-load-retry')?.addEventListener('click',history.onRetry);
+    }
+  }
+},reloadServerResult:async()=>{
+  if(cloud.busy)throw new Error('Database occupato.');
+  const activeId=state.activeTeamId;
+  if(!await cloud.load())throw new Error('Database non raggiungibile.');
+  state=cloud.state;if(state.teams.some(t=>t.id===activeId))state.activeTeamId=activeId;
+  render();return structuredClone(activeTeam());
+},saveResult:async(teamId,kind,result,expectedFingerprint)=>{
   const next=withAnalysisResult(state,teamId,kind,result,expectedFingerprint);
   if(cloud.busy||!cloud.ready)throw new Error('Database occupato o non disponibile. Ricarica le squadre.');
   state=next;

@@ -15,6 +15,8 @@ export async function handleTeams(request,{store,env=process.env}={}) {
       payload=JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!Number.isSafeInteger(payload.revision) || payload.revision<0 || typeof payload.mutationId!=='string' || !/^[a-zA-Z0-9-]{10,100}$/.test(payload.mutationId)) throw new Error('payload');
       payload.state=cloudState(payload.state);
+      // Job completion is an internal worker capability, never a browser save option.
+      payload={revision:payload.revision,state:payload.state,mutationId:payload.mutationId};
     } catch(error) {return json({error:'invalid_state'},error.message==='size'?413:400);}
   }
   try {
