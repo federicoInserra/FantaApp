@@ -88,7 +88,7 @@ PORT=8013 node scripts/serve-understat.mjs --demo-db
 
 La preview usa un database Postgres temporaneo tramite PGlite e non scrive su Neon. Senza `--demo-db`, il server usa la connessione database configurata nell’ambiente. I test coprono creazione/importazione, modifiche della rosa, risultati e timestamp condivisi tra dispositivi, sostituzione dei risultati senza cronologia, conflitti e fallimenti senza credenziali reali. Per verificare la UI della proposta senza costi si usa un testo dimostrativo esplicito nel solo database locale di test.
 
-Vercel usa `vercel.json`, Node 22, `npm test && npm run build` e output `dist`. Il build copia solo asset pubblici; `.env*`, report e codice server non entrano nel bundle statico. Dopo un aggiornamento chiudi tutte le schede e finestre installate dell’app per attivare il nuovo service worker.
+Vercel usa `vercel.json`, Node 22, `npm test && npm run build` e output `dist`. Il build copia solo asset pubblici; `.env*`, report e codice server non entrano nel bundle statico. Dopo un aggiornamento il service worker attiva la nuova cache solo quando tutti i file sono pronti, anche con altre schede aperte. Ricarica normalmente l’app per usare la nuova versione; quando appare **Aggiorna app**, il pulsante ricarica su richiesta senza interrompere automaticamente modifiche o salvataggi. Il ritorno all’app verifica la presenza di aggiornamenti.
 
 Per iPhone: apri l’app in Safari e usa **Condividi → Aggiungi alla schermata Home**. Le squadre richiedono comunque Internet e l’accesso Vercel.
 

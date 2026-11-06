@@ -1,6 +1,6 @@
 // Bump the version whenever an app-shell asset changes.
 const CACHE_PREFIX = `fantaapp-${self.registration.scope}-`;
-const CACHE = `${CACHE_PREFIX}v52`;
+const CACHE = `${CACHE_PREFIX}v53`;
 const ASSETS = [
   './src/ai-jobs.mjs', './src/comparison-rankings.mjs', './src/vote-sources.mjs',
   './', './index.html', './styles.css', './manifest.webmanifest',
@@ -8,7 +8,9 @@ const ASSETS = [
   './fonts/doto-800.ttf', './icons/pixel-ball.svg', './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png',
 ];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
+  // Activate only after the complete shell is cached, even while older tabs remain open.
+  // Existing pages keep running until the user reloads; the next navigation uses this shell.
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
@@ -25,7 +27,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || !url.href.startsWith(self.registration.scope)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    // Keep each installed shell coherent until the next worker activates.
+    // Navigation and all modules come from the same completely installed shell.
     const cached = await cache.match(event.request, { ignoreSearch: true });
     if (cached) return cached;
     try { return await fetch(event.request); }
