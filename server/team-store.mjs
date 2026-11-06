@@ -24,9 +24,10 @@ export function createTeamStore(sql) {
   const decode=row=>({revision:row.revision,state:cloudState(row.state),mutationId:row.mutation_id??null,updatedAt:row.updated_at});
   return {
     async read() { await init(); const rows=await sql`SELECT revision,state,mutation_id,updated_at FROM fantaapp_workspace WHERE id=1`; return decode(rows[0]); },
-    async write({revision,state,mutationId,jobId=null}) {
+    async write({revision,state,mutationId,jobId=null,additionalArchives=[],jobError=null}) {
       await init();
-      const candidates=archiveCandidates(state);
+      // Only background workers supply additional, already validated batch results.
+      const candidates=[...new Map([...additionalArchives,...archiveCandidates(state)].map(item=>[JSON.stringify([item.teamId,item.season,item.matchday,item.method]),item])).values()];
       // Workspace and archive are one statement: either both commit or neither does.
       const rows=await sql`WITH previous AS MATERIALIZED (
         SELECT state FROM fantaapp_workspace WHERE id=1 AND revision=${revision}
@@ -45,7 +46,7 @@ export function createTeamStore(sql) {
       ), removed AS (
         DELETE FROM fantaapp_lineup_history WHERE EXISTS(SELECT 1 FROM updated) AND team_id NOT IN(SELECT t->>'id' FROM updated,jsonb_array_elements(updated.state->'teams') t)
       ), finished AS (
-        UPDATE fantaapp_ai_jobs SET status='completed',snapshot='{}'::jsonb,error=NULL WHERE id=${jobId} AND EXISTS(SELECT 1 FROM updated)
+        UPDATE fantaapp_ai_jobs SET status='completed',snapshot='{}'::jsonb,error=${jobError} WHERE id=${jobId} AND EXISTS(SELECT 1 FROM updated)
       ) SELECT * FROM updated`;
       if (rows.length) return decode(rows[0]);
       // A retry after a lost response is safe only if that mutation is still the latest.

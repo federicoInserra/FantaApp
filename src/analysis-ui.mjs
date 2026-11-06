@@ -13,6 +13,7 @@ import {MANUAL_METHODS,isManualMethod,recommendationLabel} from './recommendatio
 import {createManualDraft,manualContextReason,copyRecommendationPrompt,buildManualRecommendation} from './manual-lineup.mjs';
 import {MethodLineups,selectionKey,selectedLineupTeam} from './method-lineups.mjs';
 import {AIJobs,jobProgress,elapsedLabel} from './ai-jobs.mjs';
+import {BATCH_MODEL,jobModelLabel} from './suggestion-batch.mjs';
 const analyses = new Map();
 let pending = null, visibleTeam, key = '', tavilyKey = '', understatURL = '';
 try { key = localStorage.getItem(API_KEY_STORAGE) ?? ''; tavilyKey = localStorage.getItem(TAVILY_KEY_STORAGE) ?? ''; understatURL = localStorage.getItem(UNDERSTAT_URL_STORAGE) ?? ''; } catch { /* Legacy credentials are optional. */ }
@@ -32,8 +33,8 @@ const serverJobs=HOSTED_API?new AIJobs({onChange:update=>{
   const job=update.job;
   if(job?.status==='running'||update.tracking&&(update.starting||update.error)){
     if(!pending||pending.serverJob&&pending.teamId===update.teamId)pending={kind:'analysis',teamId:update.teamId,serverJob:true};
-    entry.serverJob=job;entry.progress=job?`${modelInfo(job.model).label} sta preparando la proposta sul server.`:'Avvio dell’analisi… Attendi la conferma prima di chiudere l’app.';
-    if(job)entry.model=job.model;
+    entry.serverJob=job;entry.progress=job?`${jobModelLabel(job.model)}: generazione ${job.model===BATCH_MODEL?'delle tre formazioni':'della proposta'} sul server.`:'Avvio dell’analisi… Attendi la conferma prima di chiudere l’app.';
+    if(job&&job.model!==BATCH_MODEL)entry.model=job.model;
     entry.error=update.error||'';
   }else{
     entry.serverJob=null;
@@ -51,7 +52,7 @@ async function applyServerJob(job){
     const team=await reloadServerResult();
     if(team?.id===job.teamId){hydrate(team);if(visibleTeam?.id===team.id)visibleTeam=team;}
     // reloadServerResult can return the currently visible team when navigating away.
-    entry.history.invalidate();entry.serverResultPending=null;entry.error='';entry.notice='Proposta salvata nel database e in Confronto.';
+    entry.history.invalidate();entry.serverResultPending=null;entry.error='';entry.notice=job.model===BATCH_MODEL?(job.error||'Tutte e tre le formazioni sono salvate nel database e in Confronto. Scegli il metodo per visualizzarle.'):'Proposta salvata nel database e in Confronto.';
   }catch{entry.error='La proposta è salvata sul server. Ricarica il risultato quando torna la connessione.';}
   refresh();
 }
@@ -140,6 +141,14 @@ function refresh() {
     <div class="analysis-feedback ${busy?'is-pending':''}"><p id="ai-progress" role="status">${escape(busy?entry.progress||'Richiesta in corso…':pending?'È in corso una richiesta per un’altra squadra.':!manual&&!engine&&!fireworksReady()?(HOSTED_API?'Servizio AI non disponibile. Puoi comunque aggiornare i dati.':'Servizi AI non configurati.'):!understatURL?'Servizio Understat non configurato.':entry.notice||'')}</p>${entry.serverJob?jobProgress(entry.serverJob):''}${entry.serverResultPending?'<button id="ai-job-recover" class="button button-outline">Ricarica risultato</button>':''}${busy&&pending?.phase!=='saving'&&!pending?.serverJob&&!activeJob?'<button id="ai-cancel" class="button button-outline">Annulla</button>':''}</div>
     ${entry.error?`<p class="import-error analysis-alert" role="alert">${escape(entry.error)}</p>`:''}
     ${rec&&!manual?recommendationView(rec,recommendationIsStale(rec,team,entry.research,entry.matchday)||Boolean(reason))+renderFollowUp(selected,{unavailableReason:canFollowUp?followUpUnavailableReason(team,entry.matchday):'Questa proposta è archiviata. Genera una nuova proposta con questo metodo prima di continuare la conversazione.',matchday:entry.matchday,draft:entry.followUpDraft??'',pending:Boolean(locked),asking:busy&&workKind==='followUp',saving:pending?.phase==='saving',ready:fireworksReady(),error:entry.followUpError??''}):''}</section>`;
+  if(HOSTED_API){
+    const button=document.createElement('button');button.id='ai-analyze-all';button.type='button';button.className='button button-outline';
+    button.textContent=entry.serverJob?.model===BATCH_MODEL?'Generazione delle 3 formazioni…':'Genera tutte e 3 le formazioni';
+    button.disabled=Boolean(locked||!fireworksReady()||reason);
+    button.onclick=()=>run('all',team,entry);
+    const hint=document.createElement('p');hint.className='analysis-meta batch-note';hint.textContent='Statistical engine + DeepSeek + Kimi, con gli stessi dati e le impostazioni attuali. Due chiamate AI a pagamento; ogni risultato resta separato in Confronto.';
+    host.querySelector('.analysis-model-card').append(button,hint);
+  }
   host.querySelector('#ai-cancel')?.addEventListener('click', () => pending?.controller.abort());
   host.querySelector('#ai-job-recover')?.addEventListener('click',()=>applyServerJob(entry.serverResultPending));
   host.querySelector('#follow-up-cancel')?.addEventListener('click', () => pending?.controller.abort());
@@ -157,9 +166,9 @@ function refresh() {
 }
 async function run(kind,team,entry) {
   if (pending) return;
-  if(kind==='analysis'&&HOSTED_API&&AI_MODELS.some(m=>m.id===entry.model)){
+  if(HOSTED_API&&(kind==='all'||kind==='analysis'&&AI_MODELS.some(m=>m.id===entry.model))){
     pending={kind,teamId:team.id,serverJob:true};entry.error='';entry.notice='';entry.progress='Avvio dell’analisi… Attendi la conferma prima di chiudere l’app.';refresh();
-    try{await serverJobs.start({teamId:team.id,model:entry.model,matchday:entry.matchday,researchId:entry.research?.id,teamFingerprint:fingerprint(team)});}
+    try{await serverJobs.start({teamId:team.id,model:kind==='all'?BATCH_MODEL:entry.model,matchday:entry.matchday,researchId:entry.research?.id,teamFingerprint:fingerprint(team)});}
     catch{pending=null;entry.error='Avvio non confermato. Riapri la formazione per verificare le richieste già inviate.';refresh();}
     return;
   }

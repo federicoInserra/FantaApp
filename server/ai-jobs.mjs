@@ -5,32 +5,61 @@ import {buildRequest,parseResponse} from '../src/analysis.mjs';
 import {AI_MODELS,estimateUsage} from '../src/ai-models.mjs';
 import {analysisFingerprint,withAnalysisResult} from '../src/analysis-state.mjs';
 import {manualContextReason} from '../src/manual-lineup.mjs';
+import {ENGINE_ID,analyzeStatistical} from '../src/statistical-engine.mjs';
+import {BATCH_MODEL,jobModelLabel} from '../src/suggestion-batch.mjs';
+import {archiveCandidates} from './lineup-history.mjs';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 const uuid=v=>typeof v==='string'&&/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(v);
 export function publicJob(job){return job?{id:job.id,teamId:job.team_id,model:job.model,status:job.status,startedAt:new Date(job.created_at).toISOString(),expiresAt:new Date(job.expires_at).toISOString(),error:job.error??null}:null;}
-export async function executeJob(job,{store,env=process.env,fetchImpl=fetch,timeoutMs=260000,logImpl=console.info}={}) {
-  try {
-    const team=job.snapshot,matchday=team.research.matchday;
-    const body=buildRequest(team,matchday,'',new Date(job.created_at),team.research,job.model);
-    // No browser Request.signal: the task is owned by the server until its deadline.
+async function generateRecommendation(job,model,{env,fetchImpl,timeoutMs,logImpl}) {
+  const team=job.snapshot,matchday=team.research.matchday,now=new Date(job.created_at);
+  let result;
+  if(model===ENGINE_ID) result=await analyzeStatistical({team,research:team.research,matchday,now});
+  else {
+    const body=buildRequest(team,matchday,'',now,team.research,model);
+    // Every AI method uses its existing request builder, parameters and prompt.
     const response=await callProvider(providerRequest('fireworks',body),{env,fetchImpl,timeoutMs,logImpl});
     if(!response.ok)throw Error(response.status===504?'Tempo massimo del modello raggiunto. Nessun nuovo tentativo automatico.':`Fireworks: richiesta non riuscita (HTTP ${response.status}). Nessun nuovo tentativo automatico.`);
-    const data=await response.json(),result=parseResponse(data,team.research,team);
-    const recommendation={version:2,id:job.id,...result,model:job.model,aiUsage:estimateUsage(job.model,data.usage),createdAt:new Date().toISOString(),teamFingerprint:analysisFingerprint(team),researchId:team.research.id,researchAt:team.research.completedAt,matchday};
-    delete recommendation.usage;
+    const data=await response.json();
+    result={...parseResponse(data,team.research,team),model,aiUsage:estimateUsage(model,data.usage)};
+  }
+  const recommendation={version:2,id:job.model===BATCH_MODEL?`${job.id}-${model===ENGINE_ID?'engine':AI_MODELS.findIndex(m=>m.id===model)}`:job.id,
+    ...result,createdAt:new Date().toISOString(),teamFingerprint:analysisFingerprint(team),researchId:team.research.id,researchAt:team.research.completedAt,matchday};
+  delete recommendation.usage;
+  return recommendation;
+}
+export async function executeJob(job,{store,env=process.env,fetchImpl=fetch,timeoutMs=260000,logImpl=console.info}={}) {
+  try {
+    const team=job.snapshot,batch=job.model===BATCH_MODEL;
+    const methods=batch?[ENGINE_ID,...AI_MODELS.map(m=>m.id)]:[job.model];
+    // The two AI requests run concurrently within the existing five-minute job lease.
+    // No browser signal: all three methods finish even after the app is closed.
+    const results=await Promise.allSettled(methods.map(model=>generateRecommendation(job,model,{env,fetchImpl,timeoutMs,logImpl})));
+    const recommendations=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+    if(!recommendations.length) {
+      if(!batch)throw results[0].reason;
+      throw Error('Nessuna formazione generata. I risultati precedenti sono conservati. Nessun nuovo tentativo automatico.');
+    }
+    const failed=methods.filter((model,i)=>results[i].status==='rejected').map(model=>model===ENGINE_ID?'Statistical engine':jobModelLabel(model));
+    const jobError=failed.length?`Generate ${recommendations.length}/3 formazioni. Non riuscite: ${failed.join(', ')}. Le relative proposte precedenti sono conservate; nessun nuovo tentativo automatico.`:null;
     // Merge into the newest workspace revision. Unrelated edits are retained; a changed
     // roster/research or a newer recommendation must never be overwritten by this job.
     for(let attempt=0;attempt<3;attempt++) {
       const active=await store.getJob(job.team_id,job.id);if(active?.status!=='running')return;
       const current=await store.read(),live=current.state.teams.find(t=>t.id===job.team_id);
       if(!live||live.recommendation?.id!==team.recommendation?.id)throw Error('La proposta è cambiata durante l’analisi. Il nuovo risultato non è stato applicato.');
-      const state=withAnalysisResult(current.state,job.team_id,'recommendation',recommendation,recommendation.teamFingerprint);
-      if(await store.write({revision:current.revision,state,mutationId:`job-${job.id}`,jobId:job.id}))return;
+      let state=current.state;const additionalArchives=[];
+      for(const recommendation of recommendations) {
+        state=withAnalysisResult(state,job.team_id,'recommendation',recommendation,recommendation.teamFingerprint);
+        additionalArchives.push(...archiveCandidates(state).filter(item=>item.teamId===job.team_id));
+      }
+      // All successful choices, their archives and terminal job status commit together.
+      if(await store.write({revision:current.revision,state,mutationId:`job-${job.id}`,jobId:job.id,additionalArchives,jobError}))return;
     }
     throw Error('Salvataggio non riuscito per modifiche contemporanee. Nessun nuovo tentativo AI automatico.');
   } catch(error) {
     // Parser/context errors are safe to expose; upstream/database exceptions may contain secrets.
-    const safe=/^(Fireworks:|Tempo massimo|La proposta è cambiata|La rosa o le regole|I dati della ricerca|La squadra non esiste|Salvataggio non riuscito|Formazione AI non valida|Spiegazione AI non valida|Analisi non completata|Risposta AI vuota|Il modello AI non ha restituito|Previsione)/.test(error.message)?error.message:'Analisi non riuscita. Il risultato precedente è conservato; nessun nuovo tentativo automatico.';
+    const safe=/^(Nessuna formazione generata|Fireworks:|Tempo massimo|La proposta è cambiata|La rosa o le regole|I dati della ricerca|La squadra non esiste|Salvataggio non riuscito|Formazione AI non valida|Spiegazione AI non valida|Analisi non completata|Risposta AI vuota|Il modello AI non ha restituito|Previsione)/.test(error.message)?error.message:'Analisi non riuscita. Il risultato precedente è conservato; nessun nuovo tentativo automatico.';
     try{await store.failJob(job.id,safe);}catch{/* A later status read expires an interrupted task. */}
   }
 }
@@ -50,7 +79,7 @@ export async function handleAIJobs(request,{store,env=process.env,fetchImpl=fetc
     let raw='';const decoder=new TextDecoder();let size=0;
     try{while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>40000)return json({error:'size'},413);raw+=decoder.decode(value,{stream:true});}raw+=decoder.decode();}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
     let input;try{input=JSON.parse(raw);}catch{return json({error:'invalid_request'},400);}
-    if(!uuid(input?.id)||typeof input.teamId!=='string'||input.teamId.length>150||!AI_MODELS.some(m=>m.id===input.model)||typeof input.matchday!=='string')return json({error:'invalid_request'},400);
+    if(!uuid(input?.id)||typeof input.teamId!=='string'||input.teamId.length>150||!(input.model===BATCH_MODEL||AI_MODELS.some(m=>m.id===input.model))||typeof input.matchday!=='string')return json({error:'invalid_request'},400);
     const current=await database.read(),team=current.state.teams.find(t=>t.id===input.teamId);
     if(!team)return json({error:'team_not_found'},404);
     if(input.researchId!==team.research?.id||input.teamFingerprint!==analysisFingerprint(team)||input.matchday!==team.research?.matchday)return json({error:'context_changed'},409);

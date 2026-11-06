@@ -8,11 +8,20 @@ import {handleTeams} from '../server/teams-api.mjs';
 import {analysisFingerprint} from '../src/analysis-state.mjs';
 import {AI_MODELS} from '../src/ai-models.mjs';
 import {AIJobs,elapsedLabel,jobProgress} from '../src/ai-jobs.mjs';
+import {BATCH_MODEL} from '../src/suggestion-batch.mjs';
+import {buildRequest} from '../src/analysis.mjs';
+import {analyzeStatistical} from '../src/statistical-engine.mjs';
 import {historyFixture} from './fixtures/history.mjs';
 const env={FIREWORKS_API_KEY:'test-secret-never-expose'};
 async function fixture(){
  const pg=new PGlite(),store=createTeamStore(async(strings,...values)=>{let sql=strings[0];values.forEach((v,i)=>sql+=`$${i+1}`+strings[i+1]);return(await pg.query(sql,values)).rows;});
  const f=historyFixture(),now=new Date();f.team.research.createdAt=now.toISOString();f.team.research.completedAt=now.toISOString();f.team.research.roundStartsAt=new Date(now.getTime()+43200000).toISOString();
+ const kickoff=new Date(now.getTime()+86400000).toISOString();
+ for(const player of f.team.research.players)for(const observation of player.observations)if(observation.field==='kickoff'){
+  const old=observation.quote;observation.quote=old.replace(observation.value,kickoff);observation.value=kickoff;
+  const source=f.team.research.sources.find(s=>s.id===observation.sourceId);source.text=source.text.replace(old,observation.quote);
+ }
+ for(const match of f.team.research.understat.fixtures)match.kickoff=kickoff;
  await store.write({revision:0,state:f.state,mutationId:'jobs-initial-fixture'});
  let release;const gate=new Promise(resolve=>release=resolve),tasks=[],calls=[];
  const data={status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:JSON.stringify({...f.record.recommendation.lineup,forecast:f.record.recommendation.forecast,analysis:'Valid synthetic suggestion'})}]}],usage:{input_tokens:100,output_tokens:100}};
@@ -153,8 +162,106 @@ test('an already-completed start acknowledgement is published as terminal, not l
 test('browser workspace saves cannot supply the internal job-completion capability',async()=>{
  const f=await fixture();try{
   const payload=f.body();await handleAIJobs(f.post(payload),f.options);const current=await f.store.read();
-  const request=new Request('https://app.test/api/teams',{method:'PUT',headers:{Origin:'https://app.test','Content-Type':'application/json'},body:JSON.stringify({revision:current.revision,state:current.state,mutationId:'browser-job-spoof-test',jobId:payload.id})});
+  const request=new Request('https://app.test/api/teams',{method:'PUT',headers:{Origin:'https://app.test','Content-Type':'application/json'},body:JSON.stringify({revision:current.revision,state:current.state,mutationId:'browser-job-spoof-test',jobId:payload.id,additionalArchives:[{invalid:'must never reach database'}],jobError:'must not complete a job'})});
   assert.equal((await handleTeams(request,{store:f.store})).status,200);assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'running');
   f.release();await Promise.all(f.tasks);assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'completed');
  }finally{await f.close();}
+});
+
+test('one batch runs the unchanged engine and both existing prompts, and atomically archives all three after client cancellation',async()=>{
+ const f=await fixture();try{
+  const payload=f.body(randomUUID(),BATCH_MODEL),controller=new AbortController();
+  const response=await handleAIJobs(f.post(payload,controller.signal),f.options);
+  assert.equal(response.status,202);assert.equal((await response.json()).job.model,BATCH_MODEL);
+  controller.abort();assert.equal(f.calls.length,2);assert.equal(f.tasks.length,1);
+  const accepted=await f.store.getJob(f.team.id,payload.id);
+  for(const call of f.calls){
+   const body=JSON.parse(call.options.body),expected=buildRequest(accepted.snapshot,'8','',new Date(accepted.created_at),accepted.snapshot.research,body.model);
+   assert.deepEqual(body,expected);assert.equal(call.options.signal.aborted,false);
+  }
+  const before=await f.store.read();f.release();await Promise.all(f.tasks);
+  const current=await f.store.read(),history=await f.store.history(f.team.id,2026,8);
+  assert.equal(current.revision,before.revision+1);
+  assert.deepEqual(history.map(item=>item.method).sort(),['deepseek','kimi','statistical-engine']);
+  const expectedEngine=await analyzeStatistical({team:accepted.snapshot,research:accepted.snapshot.research,matchday:'8',now:new Date(accepted.created_at)});
+  assert.deepEqual(history.find(item=>item.method==='statistical-engine').record.recommendation.engine,expectedEngine.engine);
+  for(const method of ['deepseek','kimi'])assert.ok(history.find(item=>item.method===method).record.recommendation.aiUsage.usd>0);
+  assert.equal(current.state.teams[0].recommendation.model,AI_MODELS[1].id);
+  const job=await f.store.getJob(f.team.id,payload.id);assert.equal(job.status,'completed');assert.equal(job.error,null);assert.deepEqual(job.snapshot,{});
+ }finally{await f.close();}
+});
+
+test('repeated batch clicks and a competing single request never duplicate paid calls',async()=>{
+ const f=await fixture();try{
+  const payload=f.body(randomUUID(),BATCH_MODEL);
+  await handleAIJobs(f.post(payload),f.options);
+  const competing=await Promise.all([handleAIJobs(f.post(f.body(randomUUID(),BATCH_MODEL)),f.options),handleAIJobs(f.post(f.body()),f.options)]);
+  for(const response of competing)assert.equal((await response.json()).job.id,payload.id);
+  assert.equal(f.calls.length,2);f.release();await Promise.all(f.tasks);
+  const retry=await handleAIJobs(f.post(payload),f.options);assert.equal((await retry.json()).job.status,'completed');assert.equal(f.calls.length,2);
+ }finally{await f.close();}
+});
+
+test('one failed method preserves its previous archive and saves the other two without retrying',async()=>{
+ const f=await fixture();try{
+  let current=await f.store.read();current.state.teams[0].recommendation=f.rec('kimi','previous-kimi');
+  await f.store.write({...current,mutationId:'previous-kimi-fixture'});
+  current=await f.store.read();current.state.teams[0].recommendation=f.rec('deepseek');await f.store.write({...current,mutationId:'restore-deepseek-fixture'});
+  const original=f.options.fetchImpl;f.options.fetchImpl=async(url,options)=>{
+   if(JSON.parse(options.body).model===AI_MODELS[1].id){f.calls.push({url,options});return new Response('private failure',{status:502});}
+   return original(url,options);
+  };
+  const payload=f.body(randomUUID(),BATCH_MODEL);await handleAIJobs(f.post(payload),f.options);f.release();await Promise.all(f.tasks);
+  const job=await f.store.getJob(f.team.id,payload.id);assert.equal(job.status,'completed');assert.match(job.error,/2\/3/);assert.match(job.error,/Kimi/);assert.doesNotMatch(job.error,/private/);
+  const history=await f.store.history(f.team.id,2026,8);assert.equal(history.length,3);assert.equal(history.find(r=>r.method==='kimi').recommendation_id,'previous-kimi');
+  assert.equal((await f.store.read()).state.teams[0].recommendation.model,AI_MODELS[0].id);assert.equal(f.calls.length,2);
+ }finally{await f.close();}
+});
+
+test('a batch archive failure rolls back every choice and terminal status together',async()=>{
+ const f=await fixture();try{
+  await f.pg.exec("ALTER TABLE fantaapp_lineup_history ADD CONSTRAINT batch_archive_guard CHECK (method<>'kimi')");
+  const payload=f.body(randomUUID(),BATCH_MODEL);await handleAIJobs(f.post(payload),f.options);f.release();await Promise.all(f.tasks);
+  assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'failed');
+  assert.equal((await f.store.read()).state.teams[0].recommendation.id,'deepseek');
+  assert.deepEqual((await f.store.history(f.team.id,2026,8)).map(r=>r.method),['deepseek']);
+ }finally{await f.close();}
+});
+
+test('a changed research snapshot prevents the entire batch from replacing any saved method',async()=>{
+ const f=await fixture();try{
+  const payload=f.body(randomUUID(),BATCH_MODEL);await handleAIJobs(f.post(payload),f.options);
+  const current=await f.store.read();current.state.teams[0].research.id='replacement-research';
+  await f.store.write({...current,mutationId:'batch-research-changed'});
+  f.release();await Promise.all(f.tasks);
+  assert.equal((await f.store.getJob(f.team.id,payload.id)).status,'failed');
+  assert.equal((await f.store.read()).state.teams[0].recommendation.id,'deepseek');
+  assert.equal((await f.store.history(f.team.id,2026,8)).length,1);assert.equal(f.calls.length,2);
+ }finally{await f.close();}
+});
+
+test('a reopened client discovers an accepted batch and never submits it again',async()=>{
+ const storage=memory(),calls=[],batch={...job(),model:BATCH_MODEL};let accepted=false,completed=false;
+ const clientOptions={storage,schedule:()=>1,fetchImpl:async(url,options)=>{
+  calls.push(options.method);if(options.method==='POST'){accepted=true;throw Error('response lost after acceptance');}
+  return Response.json({job:accepted?{...batch,status:completed?'completed':'running'}:null});
+ }};
+ const client=new AIJobs({...clientOptions,uuid:()=>batch.id});await client.start({teamId:'team',model:BATCH_MODEL});
+ const reopened=new AIJobs(clientOptions);await reopened.resume('team');assert.equal(reopened.entries.get('team').job.model,BATCH_MODEL);
+ completed=true;await reopened.wake();assert.equal(reopened.entries.get('team').job.status,'completed');assert.equal(calls.filter(method=>method==='POST').length,1);
+});
+
+test('an unsupported engine does not block the two AI methods; a fully failed batch preserves every previous result',async()=>{
+ for(const aiFailure of [false,true]) {
+  const f=await fixture();try{
+   const current=await f.store.read();current.state.teams[0].rules[4]='Massimo 6 sostituzioni per giornata.';
+   await f.store.write({...current,mutationId:'unsupported-engine-fixture'});
+   if(aiFailure)f.options.fetchImpl=async(url,options)=>{f.calls.push({url,options});return new Response('private upstream details',{status:500});};
+   const payload={...f.body(randomUUID(),BATCH_MODEL),teamFingerprint:analysisFingerprint(current.state.teams[0])};
+   await handleAIJobs(f.post(payload),f.options);f.release();await Promise.all(f.tasks);
+   const job=await f.store.getJob(f.team.id,payload.id);assert.equal(f.calls.length,2);
+   if(aiFailure){assert.equal(job.status,'failed');assert.match(job.error,/Nessuna formazione generata/);assert.equal((await f.store.read()).state.teams[0].recommendation.id,'deepseek');assert.equal((await f.store.history(f.team.id,2026,8)).length,1);}
+   else{assert.equal(job.status,'completed');assert.match(job.error,/Statistical engine/);assert.deepEqual((await f.store.history(f.team.id,2026,8)).map(r=>r.method).sort(),['deepseek','kimi']);}
+  }finally{await f.close();}
+ }
 });

@@ -63,6 +63,12 @@ Test live senza chiavi o crediti: `node scripts/research-free-smoke.mjs /percors
 
 Il backend accetta solo modelli, fonti e parametri previsti dall’app, limita dimensioni e token, e non inoltra cookie del browser ai provider. Timeout provider 170 secondi e funzione AI 180 secondi. `/api/ai-status` restituisce soltanto booleani di configurazione.
 
+## Generare tutte le formazioni
+
+Nella sezione Formazione, **Genera tutte e 3 le formazioni** avvia Statistical engine, DeepSeek e Kimi con un solo clic e la stessa ricerca salvata. Non aggiorna le fonti e non modifica prompt, impostazioni dei modelli o parametri del motore statistico. Richiede dati aggiornati e Fireworks configurato; effettua due chiamate AI a pagamento. Il lavoro continua sul server anche chiudendo l’app e può essere recuperato alla riapertura. Invii ripetuti e richieste simultanee riutilizzano il lavoro attivo senza duplicare chiamate.
+
+Le due chiamate AI partono in parallelo entro il limite esistente di cinque minuti. I risultati riusciti e i relativi archivi vengono salvati insieme, separatamente per metodo e giornata in **Confronto**. Se un metodo fallisce, si conserva la sua proposta precedente e si salvano gli altri risultati, mostrando quali non sono riusciti; non vengono effettuati nuovi tentativi AI automatici. Una modifica a rosa, regole, ricerca o proposta durante l’esecuzione impedisce di applicare il batch a un contesto diverso. I metodi manuali ChatGPT e Federico restano fuori da questa generazione.
+
 ## Understat
 
 Il relay legge `https://understat.com/getLeagueData/Serie_A/{stagione}` con `X-Requested-With: XMLHttpRequest`. È l’endpoint pubblico usato dal sito, non un’API ufficiale con garanzia di stabilità. Il codice calcola xG, npxG, xA, tiri e valori per 90 dei giocatori, e medie xG/xGA delle squadre totali/casa/trasferta con campioni. Valori mancanti restano distinti dallo zero. Il matching usa nome/iniziali e club senza fuzzy match; ambiguità rimangono visibili.

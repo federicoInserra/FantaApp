@@ -1,4 +1,5 @@
 import {AI_MODELS} from './ai-models.mjs';
+import {BATCH_MODEL} from './suggestion-batch.mjs';
 const STORAGE='fantaapp.ai-job.';
 export function elapsedLabel(startedAt,now=Date.now()) {
   const seconds=Math.max(0,Math.floor((now-Date.parse(startedAt))/1000));
@@ -18,7 +19,7 @@ export class AIJobs {
     if(response.redirected||response.headers?.get('content-type')?.includes('text/html'))throw Error('Sessione scaduta. Riapri l’app e accedi con Vercel.');
     if(!response.ok){const error=Error(response.status===409?'I dati o la squadra sono cambiati. Ricarica la squadra prima di riprovare.':response.status===503?'Servizio AI o database non configurato.':'Verifica dell’analisi non riuscita. Riproveremo a controllare, senza inviare altre richieste AI.');error.status=response.status;throw error;}
     const data=await response.json(),job=data.job;
-    if(job&&(!['running','completed','failed'].includes(job.status)||job.teamId!==teamId||typeof job.id!=='string'||!AI_MODELS.some(m=>m.id===job.model)||!Number.isFinite(Date.parse(job.startedAt))||!Number.isFinite(Date.parse(job.expiresAt))))throw Error('Stato dell’analisi non valido.');
+    if(job&&(!['running','completed','failed'].includes(job.status)||job.teamId!==teamId||typeof job.id!=='string'||!(job.model===BATCH_MODEL||AI_MODELS.some(m=>m.id===job.model))||!Number.isFinite(Date.parse(job.startedAt))||!Number.isFinite(Date.parse(job.expiresAt))))throw Error('Stato dell’analisi non valido.');
     return job;
   }
   publish(entry,job){entry.job=job;entry.error='';this.onChange(entry);}
@@ -69,5 +70,5 @@ export class AIJobs {
 }
 export function jobProgress(job,now=Date.now()) {
   const elapsed=elapsedLabel(job.startedAt,now);
-  return `<div class="ai-job-progress"><span class="ai-job-spinner" aria-hidden="true"></span><span>Tempo trascorso <strong id="ai-job-timer">${elapsed}</strong></span><progress aria-label="Generazione della formazione in corso"></progress><p>Puoi bloccare il telefono o chiudere l’app. La proposta verrà salvata automaticamente; torna qui per vederla.</p></div>`;
+  return `<div class="ai-job-progress"><span class="ai-job-spinner" aria-hidden="true"></span><span>Tempo trascorso <strong id="ai-job-timer">${elapsed}</strong></span><progress aria-label="Generazione della formazione in corso"></progress><p>Puoi bloccare il telefono o chiudere l’app. ${job.model===BATCH_MODEL?'Le tre proposte verranno salvate automaticamente in Confronto; torna qui per vederle.':'La proposta verrà salvata automaticamente; torna qui per vederla.'}</p></div>`;
 }
