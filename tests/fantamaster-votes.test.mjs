@@ -49,6 +49,17 @@ test('malformed votes, IDs and event counts cannot become complete scores',()=>{
     const f=fixture();mutate(f);assert.throws(f.parse);
   }
 });
+test('finished-round ratings remain usable when livescores advances before the next round starts',()=>{
+  const f=fixture();f.live.day='7';
+  for(const game of f.live.scores){game.rawdate='2026-10-16 20:45';game.time='20:45';game.voting='NS';}
+  const votes=f.parse();assert.equal(votes.complete,true);assert.equal(votes.matchday,6);assert.equal(actualLineupScore(f.record,votes).status,'complete');
+  // A new live round never makes unfinished or incomplete historical votes final.
+  f.calendar.fixtures[0].status='LIVE';assert.equal(f.parse().complete,false);
+  f.calendar.fixtures[0].status='FINISHED';f.ratings.ratings=f.ratings.ratings.filter(p=>p.team!=='Club 19');assert.equal(f.parse().complete,false);
+  // Feeds must still agree to within the single round that can be awaiting ratings.
+  f.live.day='8';assert.throws(f.parse);
+  f.live.day='5';assert.throws(f.parse);
+});
 test('collector uses bounded public feeds with timeout signals and rejects upstream failures',async()=>{
   const f=fixture(),calls=[];
   const options={now:f.now,useCache:false,calendarCollector:async()=>f.calendar,fetchImpl:async(url,options)=>{calls.push(url);assert.equal(options.redirect,'error');assert.ok(options.signal);return f.fetchImpl(url);}};

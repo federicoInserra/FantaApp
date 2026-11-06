@@ -13,7 +13,10 @@ export function parseFantamasterVotes(ratings,roster,live,calendar,season,matchd
   if(!Number.isInteger(season)||!Number.isInteger(matchday)||matchday<1||matchday>38||ratings?.day!==matchday||!Number.isInteger(ratings.maxday)||ratings.maxday<matchday||ratings.maxday>38||!Array.isArray(ratings.ratings)||ratings.ratings.length>800||!Array.isArray(roster?.players)||!roster.players.length||roster.players.length>1000)fail();
   // The ratings endpoint has no season field. Anchor it to its own current
   // fixture feed's dates, and verify the requested round against the official calendar.
-  if(Number(live?.day)!==ratings.maxday||!Array.isArray(live.scores)||live.scores.length!==10||calendar?.season!==season||!Array.isArray(calendar.fixtures))fail();
+  // Before a new round starts, livescores advances while maxday still names the
+  // latest published ratings. Reject incoherent feeds, but accept this normal one-round gap.
+  const liveDay=Number(live?.day);
+  if(!Number.isInteger(liveDay)||liveDay<ratings.maxday||liveDay>ratings.maxday+1||liveDay>38||!Array.isArray(live.scores)||live.scores.length!==10||calendar?.season!==season||!Array.isArray(calendar.fixtures))fail();
   for(const game of live.scores){
     const date=/^(\d{4})-(\d{2})-\d{2} \d{2}:\d{2}$/.exec(game.rawdate??'');
     if(!date||!Number.isFinite(Date.parse(game.rawdate.replace(' ','T')+':00Z'))||Number(date[1])-(Number(date[2])<7?1:0)!==season)fail();
@@ -36,7 +39,7 @@ export function parseFantamasterVotes(ratings,roster,live,calendar,season,matchd
     players.set(String(p.id),{id:String(p.id),name:p.name,club:p.team,role:p.role,status,vote:status==='rated'?p.mark:null,fantasyVote:status==='rated'?p.fmark:null,conceded:p.gotgoal});
   }
   // Only finalized current-round editorial ratings are accepted, never live estimates.
-  const published=matchday<ratings.maxday||live.scores.every(g=>g.time==='FT'&&g.voting==='F');
+  const published=matchday<liveDay||live.scores.every(g=>g.time==='FT'&&g.voting==='F');
   return {version:1,provider:'FantaMaster',identity:'fantamaster',season,matchday,sourceUrl:fantamasterVotesURL(matchday),retrievedAt:now.toISOString(),complete:finished&&published&&ratedClubs.size===20,clubs:expectedClubs,players:[...players.values()]};
 }
 async function downloadJSON(url,fetchImpl,signal){
