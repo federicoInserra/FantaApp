@@ -29,3 +29,14 @@ test('calendar relay rejects custom URLs, foreign origins and mutations',async()
   assert.equal((await handleCalendar(new Request(url,init),{fetchImpl:()=>{throw Error('must not fetch');}})).status,status);
  }
 });
+test('official sponsored competition name is accepted without accepting other competitions or seasons',async()=>{
+ const id='serie-a::Football_Season::'+'b'.repeat(32);
+ const data={competition:{name:'Serie A Enilive',seasonName:'2026/2027'},matches:round(6).map(m=>({matchSet:{name:'Matchday 6'},home:{shortName:m.home},away:{shortName:m.away},matchDateUtc:m.kickoff,status:m.status}))};
+ const response=await handleCalendar(new Request('https://app.example/api/calendar'),{now,cache:false,fetchImpl:async url=>url===CALENDAR_URL?new Response(JSON.stringify({seasonIds:[id]})):Response.json(data)});
+ assert.equal(response.status,200);
+ assert.equal(nextMatchday(await response.json(),now).matchday,'6');
+ for(const name of ['Serie B','Coppa Italia','Primavera 1','Serie A Women','Serie A Enilive invalid']){
+  assert.throws(()=>normalizeCalendar({...data,competition:{...data.competition,name}},now),/non verificabile/);
+ }
+ assert.throws(()=>normalizeCalendar({...data,competition:{...data.competition,seasonName:'2025/2026'}},now),/non verificabile/);
+});

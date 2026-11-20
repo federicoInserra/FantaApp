@@ -4,7 +4,7 @@ const fail=()=>{throw new Error('Calendario ufficiale Serie A non disponibile o 
 export function normalizeCalendar(data,now=new Date()){
   const season=Number(/^([0-9]{4})\/[0-9]{4}$/.exec(data?.competition?.seasonName)?.[1]);
   const expected=now.getUTCFullYear()-(now.getUTCMonth()<6?1:0);
-  if(season!==expected||data?.competition?.name!=='Serie A'||!Array.isArray(data.matches)||data.matches.length>500)fail();
+  if(season!==expected||!['Serie A','Serie A Enilive'].includes(data?.competition?.name)||!Array.isArray(data.matches)||data.matches.length>500)fail();
   const fixtures=data.matches.map(m=>({matchday:Number(/(?:Matchday|Giornata)\s+(\d+)/i.exec(m.matchSet?.name??'')?.[1]),home:m.home?.shortName,away:m.away?.shortName,kickoff:m.isUnknownKickOffTime?null:m.matchDateUtc,status:m.status}));
   if(!fixtures.length||fixtures.some(m=>!Number.isInteger(m.matchday)||m.matchday<1||m.matchday>38||typeof m.home!=='string'||typeof m.away!=='string'||typeof m.status!=='string'||m.kickoff!==null&&!Number.isFinite(Date.parse(m.kickoff))))fail();
   return {version:1,season,retrievedAt:now.toISOString(),fixtures};
