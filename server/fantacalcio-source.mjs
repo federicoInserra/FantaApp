@@ -66,7 +66,8 @@ export function parseLineups(html,season) {
   return matches;
 }
 async function download(url,fetchImpl,signal){
-  const response=await fetchImpl(url,{headers:{Accept:'text/html'},redirect:'error',signal});
+  // Fantacalcio rejects Node's default user agent. Identify this collector explicitly.
+  const response=await fetchImpl(url,{headers:{Accept:'text/html','User-Agent':'FantaApp/1.0 (personal fantasy football data retrieval)'},redirect:'error',signal});
   if(!response.ok)throw new Error('Source unavailable');
   const reader=response.body.getReader();let size=0,parts=[];
   try {while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>4_000_000)fail();parts.push(Buffer.from(value));}}finally{await reader.cancel();}

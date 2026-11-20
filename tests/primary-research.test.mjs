@@ -40,7 +40,7 @@ test('Understat fixes Del Prato and never assigns Filippo to goalkeeper Pietro T
  league.players.push({...league.players[0],id:'999'});assert.match(matchSquad(league,[squad.players[0]])[0].reason,/ambiguo/);
 });
 test('free relay uses fixed sources, no credentials, bounded HTML, partial lineup failure and no paid fallback',async()=>{
- let calls=0;const fetchImpl=async(url,options)=>{calls++;assert.ok([STATS_URL,LINEUPS_URL].includes(url));assert.equal(options.headers.Authorization,undefined);return new Response(url===STATS_URL?statsHTML:lineupsHTML);};
+ let calls=0;const fetchImpl=async(url,options)=>{calls++;assert.ok([STATS_URL,LINEUPS_URL].includes(url));assert.equal(options.headers.Authorization,undefined);assert.equal(options.headers['User-Agent'],'FantaApp/1.0 (personal fantasy football data retrieval)');return new Response(url===STATS_URL?statsHTML:lineupsHTML);};
  const request=new Request('https://app.example/api/fantacalcio',{headers:{Authorization:'do-not-forward'}});
  const response=await handleFantacalcio(request,{fetchImpl,now,cache:false});assert.equal(response.status,200);assert.equal(calls,2);assert.equal(response.headers.get('cache-control'),'private, no-store');
  const partial=await handleFantacalcio(request,{fetchImpl:async url=>new Response(url===STATS_URL?statsHTML:'broken'),now,cache:false});assert.equal(partial.status,200);assert.equal((await partial.json()).warnings.length,1);
